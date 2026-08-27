@@ -1,0 +1,6 @@
+{
+  "name": "Optimizador de Cortes de Láminas",
+  "description": "Calculadora y optimizador automático de corte de láminas de madera (2D Cutting Stock / Guillotina) con visualización de layouts, retales y lista de piezas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
