@@ -1,39 +1,36 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { 
-  AlgorithmType, 
-  PieceInput, 
-  SheetConfig, 
-  Unit 
-} from './types';
-import { FURNITURE_PRESETS, STANDARD_SHEET_PRESETS } from './utils/presets';
-import { optimizeCuts } from './utils/optimizer';
-import { Header } from './components/Header';
-import { SheetConfigPanel } from './components/SheetConfigPanel';
-import { PieceListEditor } from './components/PieceListEditor';
-import { OptimizerControls } from './components/OptimizerControls';
-import { ResultDashboard } from './components/ResultDashboard';
-import { SheetCanvasView } from './components/SheetCanvasView';
-import { PiecesReportTable } from './components/PiecesReportTable';
-import { CutSequenceModal } from './components/CutSequenceModal';
-import { PrintReportView } from './components/PrintReportView';
+import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { AlgorithmType, PieceInput, SheetConfig, Unit } from "./types";
+import { FURNITURE_PRESETS, STANDARD_SHEET_PRESETS } from "./utils/presets";
+import { optimizeCuts } from "./utils/optimizer";
+import { Header } from "./components/Header";
+import { SheetConfigPanel } from "./components/SheetConfigPanel";
+import { PieceListEditor } from "./components/PieceListEditor";
+import { OptimizerControls } from "./components/OptimizerControls";
+import { ResultDashboard } from "./components/ResultDashboard";
+import { SheetCanvasView } from "./components/SheetCanvasView";
+import { PiecesReportTable } from "./components/PiecesReportTable";
+import { CutSequenceModal } from "./components/CutSequenceModal";
+import { PrintReportView } from "./components/PrintReportView";
 
 export default function App() {
   // Unit state
-  const [unit, setUnit] = useState<Unit>('mm');
+  const [unit, setUnit] = useState<Unit>("mm");
 
   // Initial Sheet Configuration
   const [sheetConfig, setSheetConfig] = useState<SheetConfig>({
-    name: 'Melamina Estándar 2440 × 1830 mm',
+    name: "Melamina Estándar 2440 × 1830 mm",
     length: 2440,
     width: 1830,
     kerf: 3.0,
     trimMargin: 10.0,
-    grainDirection: 'none',
+    grainDirection: "none",
     pricePerSheet: 45.0,
-    unit: 'mm',
+    unit: "mm",
   });
 
   // Pieces to cut state initialized with kitchen cabinet preset
+  const [pieces, setPieces] = useState<PieceInput[]>([]);
+  /*
   const [pieces, setPieces] = useState<PieceInput[]>(() => {
     const defaultPreset = FURNITURE_PRESETS[0];
     return defaultPreset.pieces.map((p, idx) => ({
@@ -41,9 +38,10 @@ export default function App() {
       id: `p-init-${idx + 1}`,
     }));
   });
+  */
 
   // Optimizer algorithm
-  const [algorithm, setAlgorithm] = useState<AlgorithmType>('auto_best');
+  const [algorithm, setAlgorithm] = useState<AlgorithmType>("auto_best");
 
   // Active sheet tab
   const [activeSheetIndex, setActiveSheetIndex] = useState<number>(0);
@@ -58,20 +56,26 @@ export default function App() {
     if (newUnit === unit) return;
 
     let factor = 1;
-    if (unit === 'mm' && newUnit === 'cm') factor = 0.1;
-    else if (unit === 'mm' && newUnit === 'in') factor = 1 / 25.4;
-    else if (unit === 'cm' && newUnit === 'mm') factor = 10;
-    else if (unit === 'cm' && newUnit === 'in') factor = 1 / 2.54;
-    else if (unit === 'in' && newUnit === 'mm') factor = 25.4;
-    else if (unit === 'in' && newUnit === 'cm') factor = 2.54;
+    if (unit === "mm" && newUnit === "cm") factor = 0.1;
+    else if (unit === "mm" && newUnit === "in") factor = 1 / 25.4;
+    else if (unit === "cm" && newUnit === "mm") factor = 10;
+    else if (unit === "cm" && newUnit === "in") factor = 1 / 2.54;
+    else if (unit === "in" && newUnit === "mm") factor = 25.4;
+    else if (unit === "in" && newUnit === "cm") factor = 2.54;
 
-    const roundVal = (v: number) => (newUnit === 'in' ? Number((v * factor).toFixed(2)) : Math.round(v * factor));
+    const roundVal = (v: number) =>
+      newUnit === "in"
+        ? Number((v * factor).toFixed(2))
+        : Math.round(v * factor);
 
     setSheetConfig((prev) => ({
       ...prev,
       length: roundVal(prev.length),
       width: roundVal(prev.width),
-      kerf: newUnit === 'in' ? Number((prev.kerf * factor).toFixed(3)) : Number((prev.kerf * factor).toFixed(1)),
+      kerf:
+        newUnit === "in"
+          ? Number((prev.kerf * factor).toFixed(3))
+          : Number((prev.kerf * factor).toFixed(1)),
       trimMargin: roundVal(prev.trimMargin),
       unit: newUnit,
     }));
@@ -81,7 +85,7 @@ export default function App() {
         ...p,
         length: roundVal(p.length),
         width: roundVal(p.width),
-      }))
+      })),
     );
 
     setUnit(newUnit);
@@ -97,12 +101,12 @@ export default function App() {
     let targetKerf = preset.sheetConfig.kerf || 3;
     let targetTrim = preset.sheetConfig.trimMargin || 10;
 
-    if (unit === 'cm') {
+    if (unit === "cm") {
       targetLength = targetLength / 10;
       targetWidth = targetWidth / 10;
       targetKerf = targetKerf / 10;
       targetTrim = targetTrim / 10;
-    } else if (unit === 'in') {
+    } else if (unit === "in") {
       targetLength = Number((targetLength / 25.4).toFixed(1));
       targetWidth = Number((targetWidth / 25.4).toFixed(1));
       targetKerf = Number((targetKerf / 25.4).toFixed(2));
@@ -121,10 +125,10 @@ export default function App() {
     const convertedPieces = preset.pieces.map((p, idx) => {
       let l = p.length;
       let w = p.width;
-      if (unit === 'cm') {
+      if (unit === "cm") {
         l = l / 10;
         w = w / 10;
-      } else if (unit === 'in') {
+      } else if (unit === "in") {
         l = Number((l / 25.4).toFixed(2));
         w = Number((w / 25.4).toFixed(2));
       }
@@ -143,12 +147,12 @@ export default function App() {
   // Reset to default blank state
   const handleReset = () => {
     setSheetConfig({
-      name: 'Lámina Personalizada',
-      length: unit === 'mm' ? 2440 : unit === 'cm' ? 244 : 96,
-      width: unit === 'mm' ? 1220 : unit === 'cm' ? 122 : 48,
-      kerf: unit === 'mm' ? 3 : unit === 'cm' ? 0.3 : 0.125,
-      trimMargin: unit === 'mm' ? 10 : unit === 'cm' ? 1 : 0.5,
-      grainDirection: 'none',
+      name: "Lámina Personalizada",
+      length: unit === "mm" ? 2440 : unit === "cm" ? 244 : 96,
+      width: unit === "mm" ? 1220 : unit === "cm" ? 122 : 48,
+      kerf: unit === "mm" ? 3 : unit === "cm" ? 0.3 : 0.125,
+      trimMargin: unit === "mm" ? 10 : unit === "cm" ? 1 : 0.5,
+      grainDirection: "none",
       pricePerSheet: 0,
       unit,
     });
@@ -163,7 +167,10 @@ export default function App() {
 
   // Adjust activeSheetIndex if out of bounds
   useEffect(() => {
-    if (activeSheetIndex >= optimizationResult.sheets.length && optimizationResult.sheets.length > 0) {
+    if (
+      activeSheetIndex >= optimizationResult.sheets.length &&
+      optimizationResult.sheets.length > 0
+    ) {
       setActiveSheetIndex(0);
     }
   }, [optimizationResult.sheets.length, activeSheetIndex]);
@@ -199,7 +206,9 @@ export default function App() {
             {/* Step 1: Lámina Inicial */}
             <SheetConfigPanel
               config={sheetConfig}
-              onChange={(updated) => setSheetConfig((prev) => ({ ...prev, ...updated }))}
+              onChange={(updated) =>
+                setSheetConfig((prev) => ({ ...prev, ...updated }))
+              }
               unit={unit}
             />
 
@@ -223,10 +232,7 @@ export default function App() {
             />
 
             {/* Results KPI Metric Cards */}
-            <ResultDashboard
-              result={optimizationResult}
-              unit={unit}
-            />
+            <ResultDashboard result={optimizationResult} unit={unit} />
 
             {/* 2D Interactive Cutting Diagram (SVG Canvas) */}
             <SheetCanvasView
