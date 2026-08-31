@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { EdgeBanding, PieceInput, Unit } from '../types';
 import { PIECE_COLORS } from '../utils/presets';
 import { formatArea } from '../utils/optimizer';
@@ -8,13 +8,15 @@ import {
   Copy, 
   RotateCw, 
   FileSpreadsheet, 
-  Sparkles,
   Layers,
-  Check,
   X,
   Upload,
   Download,
-  AlertCircle
+  AlertCircle,
+  FolderPlus,
+  Sparkles,
+  Info,
+  Layers as LayersIcon
 } from 'lucide-react';
 
 interface PieceListEditorProps {
@@ -32,6 +34,7 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
 }) => {
   // New piece draft state
   const [draftName, setDraftName] = useState('');
+  const [draftFurnitureGroup, setDraftFurnitureGroup] = useState('');
   const [draftLength, setDraftLength] = useState<string>('');
   const [draftWidth, setDraftWidth] = useState<string>('');
   const [draftQuantity, setDraftQuantity] = useState<number>(1);
@@ -44,9 +47,20 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
     right: false,
   });
 
+  const [filterGroup, setFilterGroup] = useState<string>('all');
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [batchText, setBatchText] = useState('');
   const [batchError, setBatchError] = useState('');
+
+  // Extract distinct furniture groups
+  const existingGroups = useMemo(() => {
+    const set = new Set<string>();
+    pieces.forEach((p) => {
+      const g = (p.furnitureGroup || '').trim();
+      if (g) set.add(g);
+    });
+    return Array.from(set);
+  }, [pieces]);
 
   // Total metrics
   const totalItemsCount = pieces.reduce((sum, p) => sum + (p.quantity || 0), 0);
@@ -54,6 +68,49 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
     (sum, p) => sum + (p.length || 0) * (p.width || 0) * (p.quantity || 0),
     0
   );
+
+  // Carpentry calculation hint
+  const carpentryAdvice = useMemo(() => {
+    // Find if there is a group with laterals and shelves
+    for (const grp of (existingGroups.length > 0 ? existingGroups : ['Mueble'])) {
+      const groupPieces = pieces.filter(
+        (p) => (p.furnitureGroup || '').trim() === grp || existingGroups.length === 0
+      );
+
+      const lateral = groupPieces.find((p) => {
+        const n = p.name.toLowerCase();
+        return n.includes('lateral') || n.includes('costado');
+      });
+
+      const shelf = groupPieces.find((p) => {
+        const n = p.name.toLowerCase();
+        return n.includes('entrepa') || n.includes('estante') || n.includes('repisa');
+      });
+
+      const back = groupPieces.find((p) => {
+        const n = p.name.toLowerCase();
+        return n.includes('traser') || n.includes('fondo') || n.includes('respaldo');
+      });
+
+      if (lateral || shelf || back) {
+        const standardThickness = unit === 'cm' ? 1.8 : unit === 'in' ? 0.75 : 18;
+        const totalThicknessDiscount = standardThickness * 2;
+        
+        let outerWidth = 0;
+        if (back) outerWidth = Math.min(back.length, back.width);
+        else if (lateral && shelf) outerWidth = Math.max(shelf.length, shelf.width) + totalThicknessDiscount;
+
+        return {
+          groupName: grp,
+          outerWidth: outerWidth > 0 ? outerWidth : null,
+          thickness: standardThickness,
+          discount: totalThicknessDiscount,
+          shelfInteriorWidth: outerWidth > 0 ? Math.max(0, outerWidth - totalThicknessDiscount) : null,
+        };
+      }
+    }
+    return null;
+  }, [pieces, existingGroups, unit]);
 
   const handleAddPiece = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -69,6 +126,7 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
     const newPiece: PieceInput = {
       id: `piece-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       name: draftName.trim() || `Pieza ${pieces.length + 1}`,
+      furnitureGroup: draftFurnitureGroup.trim() || (existingGroups[0] || 'Mueble 1'),
       length: parsedLength,
       width: parsedWidth,
       quantity: Math.max(1, draftQuantity),
@@ -126,7 +184,33 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
     });
   };
 
-  // Batch CSV Import
+  // Direct CSV Export from the Editor
+  const handleExportCSV = () => {
+    const headers = ['Mueble / Grupo', 'Nombre', `Largo (${unit})`, `Ancho (${unit})`, 'Cantidad', 'Girar 90°', 'L1', 'L2', 'A1', 'A2'];
+    const rows = pieces.map((p) => [
+      `"${p.furnitureGroup || 'General'}"`,
+      `"${p.name}"`,
+      p.length,
+      p.width,
+      p.quantity,
+      p.allowRotation ? 'Sí' : 'No',
+      p.edgeBanding?.top ? '1' : '0',
+      p.edgeBanding?.bottom ? '1' : '0',
+      p.edgeBanding?.left ? '1' : '0',
+      p.edgeBanding?.right ? '1' : '0',
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Despiece_Muebles_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Batch CSV / Excel Parser supporting multi-furniture
   const handleProcessBatchText = () => {
     try {
       setBatchError('');
@@ -141,40 +225,78 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        // Skip header if present
-        if (i === 0 && (line.toLowerCase().includes('largo') || line.toLowerCase().includes('length') || line.toLowerCase().includes('nombre'))) {
+        // Skip header line
+        if (
+          i === 0 &&
+          (line.toLowerCase().includes('largo') ||
+            line.toLowerCase().includes('length') ||
+            line.toLowerCase().includes('nombre') ||
+            line.toLowerCase().includes('mueble') ||
+            line.toLowerCase().includes('pieza'))
+        ) {
           continue;
         }
 
         // Split by tab, comma, or semicolon
-        const parts = line.split(/[\t,;]+/).map((p) => p.trim());
+        const parts = line.split(/[\t,;]+/).map((p) => p.trim().replace(/^"|"$/g, ''));
         if (parts.length < 2) continue;
 
+        let furnitureGroup = 'Mueble 1';
         let name = '';
         let length = 0;
         let width = 0;
         let qty = 1;
         let rot = true;
 
-        if (parts.length >= 3 && isNaN(Number(parts[0])) && !isNaN(Number(parts[1]))) {
-          // Format: Nombre, Largo, Ancho, [Cantidad], [Giro]
+        // Case A: 5+ columns (Mueble, Nombre, Largo, Ancho, Cantidad)
+        if (
+          parts.length >= 4 &&
+          isNaN(Number(parts[0])) &&
+          isNaN(Number(parts[1])) &&
+          !isNaN(Number(parts[2].replace(',', '.')))
+        ) {
+          furnitureGroup = parts[0] || 'Mueble 1';
+          name = parts[1];
+          length = parseFloat(parts[2].replace(',', '.'));
+          width = parseFloat(parts[3].replace(',', '.'));
+          qty = parts[4] ? parseInt(parts[4], 10) || 1 : 1;
+          rot = parts[5] ? parts[5].toLowerCase() !== 'no' && parts[5] !== '0' : true;
+        }
+        // Case B: (Nombre, Largo, Ancho, Cantidad, [Giro], [Mueble])
+        else if (parts.length >= 3 && isNaN(Number(parts[0])) && !isNaN(Number(parts[1].replace(',', '.')))) {
           name = parts[0];
-          length = parseFloat(parts[1]);
-          width = parseFloat(parts[2]);
+          length = parseFloat(parts[1].replace(',', '.'));
+          width = parseFloat(parts[2].replace(',', '.'));
           qty = parts[3] ? parseInt(parts[3], 10) || 1 : 1;
           rot = parts[4] ? parts[4].toLowerCase() !== 'no' && parts[4] !== '0' : true;
-        } else if (!isNaN(Number(parts[0])) && !isNaN(Number(parts[1]))) {
-          // Format: Largo, Ancho, [Cantidad], [Nombre]
-          length = parseFloat(parts[0]);
-          width = parseFloat(parts[1]);
+          if (parts[5]) {
+            furnitureGroup = parts[5];
+          } else {
+            // Auto detect from name if has prefix (e.g. "Estante - Lateral")
+            if (name.includes('-')) {
+              const prefix = name.split('-')[0].trim();
+              if (prefix.length > 2) furnitureGroup = prefix;
+            } else if (name.toLowerCase().includes('mesita') || name.toLowerCase().includes('noche')) {
+              furnitureGroup = 'Mesita de Noche';
+            } else if (name.toLowerCase().includes('estante') || name.toLowerCase().includes('biblioteca')) {
+              furnitureGroup = 'Estantería';
+            }
+          }
+        }
+        // Case C: (Largo, Ancho, Cantidad, Nombre, [Mueble])
+        else if (!isNaN(Number(parts[0].replace(',', '.'))) && !isNaN(Number(parts[1].replace(',', '.')))) {
+          length = parseFloat(parts[0].replace(',', '.'));
+          width = parseFloat(parts[1].replace(',', '.'));
           qty = parts[2] ? parseInt(parts[2], 10) || 1 : 1;
           name = parts[3] || `Pieza ${importedPieces.length + 1}`;
+          if (parts[4]) furnitureGroup = parts[4];
         }
 
         if (length > 0 && width > 0) {
           importedPieces.push({
             id: `piece-imp-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
             name: name || `Pieza ${importedPieces.length + 1}`,
+            furnitureGroup,
             length,
             width,
             quantity: Math.max(1, qty),
@@ -187,7 +309,7 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
       }
 
       if (importedPieces.length === 0) {
-        setBatchError('No se detectaron piezas válidas con formato (Largo, Ancho, Cantidad).');
+        setBatchError('No se detectaron piezas válidas con formato (Nombre, Largo, Ancho, Cantidad).');
         return;
       }
 
@@ -199,6 +321,12 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
     }
   };
 
+  // Filtered pieces according to group selection
+  const displayedPieces = useMemo(() => {
+    if (filterGroup === 'all') return pieces;
+    return pieces.filter((p) => (p.furnitureGroup || '').trim() === filterGroup);
+  }, [pieces, filterGroup]);
+
   return (
     <div id="piece-list-editor" className="bg-white rounded-xl border border-stone-200 shadow-sm overflow-hidden flex flex-col">
       {/* Panel Header */}
@@ -208,27 +336,47 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
             2
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-stone-900">
-              Piezas a Cortar ({pieces.length} tipos, {totalItemsCount} unidades)
+            <h2 className="text-sm font-semibold text-stone-900 flex items-center gap-2">
+              <span>Piezas a Cortar ({pieces.length} tipos, {totalItemsCount} unidades)</span>
+              {existingGroups.length > 1 && (
+                <span className="text-[11px] font-normal px-2 py-0.5 bg-amber-100 text-amber-900 rounded-full">
+                  {existingGroups.length} muebles en proyecto
+                </span>
+              )}
             </h2>
             <p className="text-xs text-stone-500">
-              Ingresa las dimensiones de cada pieza y configuración de cantos
+              Ingresa las dimensiones y asigna cada pieza a su mueble para auto-ensamble 3D
             </p>
           </div>
         </div>
 
         {/* Action buttons */}
         <div className="flex items-center gap-1.5">
+          {/* CSV Import */}
           <button
             id="batch-import-button"
             type="button"
             onClick={() => setShowBatchModal(true)}
-            className="flex items-center gap-1 text-xs bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 px-2.5 py-1 rounded-lg transition-colors font-medium"
+            className="flex items-center gap-1 text-xs bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 px-2.5 py-1 rounded-lg transition-colors font-medium shadow-2xs"
             title="Importar lista desde Excel o CSV"
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-amber-600" />
             <span>Pegar / CSV</span>
           </button>
+
+          {/* CSV Export */}
+          {pieces.length > 0 && (
+            <button
+              id="export-csv-button"
+              type="button"
+              onClick={handleExportCSV}
+              className="flex items-center gap-1 text-xs bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 px-2.5 py-1 rounded-lg transition-colors font-medium shadow-2xs"
+              title="Descargar archivo CSV con la lista de piezas"
+            >
+              <Download className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="hidden sm:inline">Exportar</span>
+            </button>
+          )}
 
           {pieces.length > 0 && (
             <button
@@ -247,17 +395,39 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
       {/* Quick Add Bar Form */}
       <form onSubmit={handleAddPiece} className="p-3.5 bg-stone-50/70 border-b border-stone-200">
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+          {/* Furniture / Group Name */}
+          <div className="sm:col-span-3">
+            <label htmlFor="draft-piece-group" className="block text-[11px] font-medium text-stone-600 mb-1 flex items-center gap-1">
+              <FolderPlus className="w-3 h-3 text-amber-600" />
+              <span>Mueble / Proyecto</span>
+            </label>
+            <input
+              id="draft-piece-group"
+              type="text"
+              list="existing-groups-list"
+              value={draftFurnitureGroup}
+              onChange={(e) => setDraftFurnitureGroup(e.target.value)}
+              placeholder={existingGroups[0] || 'Ej: Estante, Mesita...'}
+              className="w-full bg-white border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs text-stone-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+            />
+            <datalist id="existing-groups-list">
+              {existingGroups.map((grp) => (
+                <option key={grp} value={grp} />
+              ))}
+            </datalist>
+          </div>
+
           {/* Piece Name */}
-          <div className="sm:col-span-4">
+          <div className="sm:col-span-3">
             <label htmlFor="draft-piece-name" className="block text-[11px] font-medium text-stone-600 mb-1">
-              Nombre / Etiqueta
+              Nombre de la Pieza
             </label>
             <input
               id="draft-piece-name"
               type="text"
               value={draftName}
               onChange={(e) => setDraftName(e.target.value)}
-              placeholder="Ej: Lateral, Puerta, Repisa..."
+              placeholder="Ej: Lateral, Entrepaño, Puerta..."
               className="w-full bg-white border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs text-stone-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
             />
           </div>
@@ -301,58 +471,20 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
           </div>
 
           {/* Quantity */}
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-1">
             <label htmlFor="draft-piece-qty" className="block text-[11px] font-medium text-stone-600 mb-1 text-center">
               Cant.
             </label>
-            <div className="flex items-center justify-center bg-white border border-stone-300 rounded-lg p-0.5 shadow-2xs">
-              <button
-                type="button"
-                onClick={() => setDraftQuantity((q) => Math.max(1, q - 1))}
-                className="w-6 h-6 rounded bg-stone-100 hover:bg-stone-200 text-stone-700 flex items-center justify-center font-bold text-xs transition-colors shrink-0"
-                title="Disminuir cantidad"
-              >
-                -
-              </button>
-              <input
-                id="draft-piece-qty"
-                type="number"
-                min="1"
-                max="1000"
-                step="1"
-                value={draftQuantity}
-                onChange={(e) => setDraftQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                className="w-12 bg-transparent text-center text-xs text-stone-900 font-mono font-bold focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => setDraftQuantity((q) => q + 1)}
-                className="w-6 h-6 rounded bg-stone-100 hover:bg-stone-200 text-stone-700 flex items-center justify-center font-bold text-xs transition-colors shrink-0"
-                title="Aumentar cantidad"
-              >
-                +
-              </button>
-            </div>
-          </div>
-
-          {/* Rotate Toggle */}
-          <div className="sm:col-span-1 flex flex-col items-center">
-            <label htmlFor="draft-piece-rotation" className="block text-[11px] font-medium text-stone-600 mb-1" title="Permitir girar la pieza para mejor ajuste">
-              Giro
-            </label>
-            <button
-              id="draft-piece-rotation"
-              type="button"
-              onClick={() => setDraftRotation(!draftRotation)}
-              className={`w-full py-1.5 rounded-lg border text-xs flex items-center justify-center transition-all ${
-                draftRotation
-                  ? 'bg-amber-100 border-amber-400 text-amber-900 font-medium'
-                  : 'bg-stone-200 border-stone-300 text-stone-500'
-              }`}
-              title={draftRotation ? 'Giro permitido (90°)' : 'Orientación bloqueada'}
-            >
-              <RotateCw className={`w-3.5 h-3.5 ${draftRotation ? 'text-amber-700' : 'text-stone-400'}`} />
-            </button>
+            <input
+              id="draft-piece-qty"
+              type="number"
+              min="1"
+              max="1000"
+              step="1"
+              value={draftQuantity}
+              onChange={(e) => setDraftQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
+              className="w-full bg-white border border-stone-300 rounded-lg py-1.5 text-center text-xs text-stone-900 font-mono font-bold focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+            />
           </div>
 
           {/* Add Button */}
@@ -373,6 +505,54 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
         </div>
       </form>
 
+      {/* Carpentry Rule Banner / Shelf Dimension Assistant */}
+      {carpentryAdvice && carpentryAdvice.shelfInteriorWidth !== null && (
+        <div className="bg-amber-50/70 border-b border-amber-200/80 px-4 py-2 flex items-center justify-between gap-2 text-xs text-amber-900">
+          <div className="flex items-center gap-2">
+            <Info className="w-4 h-4 text-amber-700 shrink-0" />
+            <span>
+              <strong>📐 Regla de Entrepaños ({carpentryAdvice.groupName}):</strong> Para un ancho exterior de{' '}
+              <strong>{carpentryAdvice.outerWidth} {unit}</strong> y melamina de <strong>{carpentryAdvice.thickness} {unit}</strong>,
+              los entrepaños interiores deben medir <strong>{carpentryAdvice.shelfInteriorWidth.toFixed(1)} {unit}</strong> de largo
+              ({carpentryAdvice.outerWidth} − {carpentryAdvice.discount} {unit}) para encajar perfectamente entre los 2 laterales.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Filter by furniture group tabs if multiple exist */}
+      {existingGroups.length > 1 && (
+        <div className="px-4 py-2 bg-stone-100/70 border-b border-stone-200 flex items-center gap-1.5 overflow-x-auto">
+          <span className="text-[11px] font-medium text-stone-500 mr-1">Filtrar tabla:</span>
+          <button
+            onClick={() => setFilterGroup('all')}
+            className={`px-2.5 py-0.5 rounded-full text-xs font-medium transition-all ${
+              filterGroup === 'all'
+                ? 'bg-amber-600 text-white shadow-2xs'
+                : 'bg-white text-stone-600 hover:text-stone-900 border border-stone-200'
+            }`}
+          >
+            Todos ({pieces.length})
+          </button>
+          {existingGroups.map((grp) => {
+            const count = pieces.filter((p) => (p.furnitureGroup || '').trim() === grp).length;
+            return (
+              <button
+                key={grp}
+                onClick={() => setFilterGroup(grp)}
+                className={`px-2.5 py-0.5 rounded-full text-xs font-medium transition-all ${
+                  filterGroup === grp
+                    ? 'bg-amber-600 text-white shadow-2xs'
+                    : 'bg-white text-stone-600 hover:text-stone-900 border border-stone-200'
+                }`}
+              >
+                {grp} ({count})
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Pieces Table */}
       <div className="flex-1 overflow-x-auto max-h-[380px] overflow-y-auto">
         {pieces.length === 0 ? (
@@ -382,13 +562,14 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
             </div>
             <p className="text-sm font-medium text-stone-700">No hay piezas añadidas</p>
             <p className="text-xs text-stone-400 max-w-sm mx-auto mt-1">
-              Ingresa las medidas en la barra superior o carga una plantilla de mueble prediseñada.
+              Ingresa las medidas en la barra superior, pega un CSV o carga una plantilla.
             </p>
           </div>
         ) : (
           <table className="w-full text-left text-xs border-collapse">
             <thead className="bg-stone-100/80 text-stone-600 uppercase text-[10px] font-semibold tracking-wider sticky top-0 border-b border-stone-200 z-10">
               <tr>
+                <th className="py-2 px-3">Mueble</th>
                 <th className="py-2 px-3">Pieza</th>
                 <th className="py-2 px-2">Largo ({unit})</th>
                 <th className="py-2 px-2">Ancho ({unit})</th>
@@ -401,10 +582,21 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100">
-              {pieces.map((piece, index) => {
+              {displayedPieces.map((piece) => {
                 const eb = piece.edgeBanding || { top: false, bottom: false, left: false, right: false };
                 return (
                   <tr key={piece.id} className="hover:bg-amber-50/40 transition-colors group">
+                    {/* Furniture Group */}
+                    <td className="py-2 px-3">
+                      <input
+                        type="text"
+                        value={piece.furnitureGroup || ''}
+                        placeholder="Mueble 1"
+                        onChange={(e) => handleUpdatePiece(piece.id, { furnitureGroup: e.target.value })}
+                        className="bg-stone-50 group-hover:bg-white border border-stone-200 hover:border-stone-300 focus:border-amber-500 rounded px-1.5 py-0.5 text-xs text-amber-900 font-medium w-24 sm:w-28 focus:outline-none"
+                      />
+                    </td>
+
                     {/* Color dot + Name */}
                     <td className="py-2 px-3">
                       <div className="flex items-center gap-2">
@@ -427,7 +619,7 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
                           type="text"
                           value={piece.name}
                           onChange={(e) => handleUpdatePiece(piece.id, { name: e.target.value })}
-                          className="bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-stone-300 focus:border-amber-500 rounded px-1.5 py-0.5 text-xs text-stone-900 font-medium w-36 sm:w-44 focus:outline-none transition-all"
+                          className="bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-stone-300 focus:border-amber-500 rounded px-1.5 py-0.5 text-xs text-stone-900 font-medium w-32 sm:w-40 focus:outline-none transition-all"
                         />
                       </div>
                     </td>
@@ -611,7 +803,7 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
         </div>
 
         <div className="text-[11px] text-stone-400">
-          Tip: Haz clic en L1/L2/A1/A2 para asignar tapacanto por lado
+          Tip: Asigna el mismo nombre de Mueble a las piezas que componen un mismo mueble
         </div>
       </div>
 
@@ -622,7 +814,7 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
             <div className="bg-stone-900 text-stone-100 px-4 py-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <FileSpreadsheet className="w-4 h-4 text-amber-400" />
-                <h3 className="text-sm font-semibold">Pegar desde Excel o CSV</h3>
+                <h3 className="text-sm font-semibold">Pegar desde Excel o CSV Multi-Mueble</h3>
               </div>
               <button
                 type="button"
@@ -637,18 +829,18 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
               <p className="text-xs text-stone-600">
                 Pega directamente columnas copiadas de Excel o texto delimitado por comas/tabulaciones.
                 <br />
-                <strong className="text-stone-800">Formatos reconocidos:</strong>
+                <strong className="text-stone-800">Formatos soportados:</strong>
+                <br />
+                • <code className="bg-stone-100 px-1 py-0.5 rounded font-mono text-[11px]">Mueble, Nombre, Largo, Ancho, Cantidad</code>
                 <br />
                 • <code className="bg-stone-100 px-1 py-0.5 rounded font-mono text-[11px]">Nombre, Largo, Ancho, Cantidad</code>
-                <br />
-                • <code className="bg-stone-100 px-1 py-0.5 rounded font-mono text-[11px]">Largo, Ancho, Cantidad, Nombre</code>
               </p>
 
               <textarea
                 value={batchText}
                 onChange={(e) => setBatchText(e.target.value)}
-                placeholder={`Lateral 1\t720\t580\t2\nBase\t564\t580\t1\nEstante\t562\t560\t2`}
-                className="w-full h-40 bg-stone-50 border border-stone-300 rounded-lg p-2.5 text-xs font-mono text-stone-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white"
+                placeholder={`Estante\tLateral\t150\t44\t2\nEstante\tTrasera\t150\t55\t1\nEstante\tEntrepaño\t51.4\t44\t4\nMesita\tLateral\t60\t35\t2\nMesita\tTapa\t45\t35\t1`}
+                className="w-full h-44 bg-stone-50 border border-stone-300 rounded-lg p-2.5 text-xs font-mono text-stone-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white"
               />
 
               {batchError && (

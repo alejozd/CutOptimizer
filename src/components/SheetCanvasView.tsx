@@ -357,6 +357,42 @@ export const SheetCanvasView: React.FC<SheetCanvasViewProps> = ({
                 />
               )}
 
+              {/* Empty Sheet Placeholder Indicator */}
+              {placedPieces.length === 0 && (
+                <g>
+                  <rect
+                    x={Math.max(10, sheetW / 2 - 150)}
+                    y={Math.max(10, sheetH / 2 - 30)}
+                    width={Math.min(300, sheetW - 20)}
+                    height={60}
+                    rx="8"
+                    fill="#ffffff"
+                    fillOpacity="0.9"
+                    stroke="#d6d3d1"
+                    strokeWidth="1.5"
+                  />
+                  <text
+                    x={sheetW / 2}
+                    y={sheetH / 2 - 6}
+                    textAnchor="middle"
+                    fill="#57534e"
+                    fontSize={Math.min(14, Math.max(10, sheetW / 30))}
+                    fontWeight="600"
+                  >
+                    Lámina Lista ({sheetW} × {sheetH} {unit})
+                  </text>
+                  <text
+                    x={sheetW / 2}
+                    y={sheetH / 2 + 14}
+                    textAnchor="middle"
+                    fill="#a8a29e"
+                    fontSize={Math.min(11, Math.max(8, sheetW / 40))}
+                  >
+                    Agrega piezas en la tabla para ver el plano de corte
+                  </text>
+                </g>
+              )}
+
               {/* Waste Areas / Usable Offcuts */}
               {showWasteAreas &&
                 wasteAreas.map((w) => (

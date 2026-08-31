@@ -18,6 +18,7 @@ export interface PieceInput {
   color: string;
   edgeBanding: EdgeBanding;
   grainDirection?: 'horizontal' | 'vertical' | 'none'; // Sentido de veta
+  furnitureGroup?: string; // Nombre del mueble o grupo (ej. "Estante", "Mesita de Noche")
 }
 
 export interface SheetConfig {
@@ -35,6 +36,7 @@ export interface PlacedPiece {
   id: string;
   pieceId: string;
   pieceName: string;
+  furnitureGroup?: string;
   x: number;
   y: number;
   width: number;

@@ -214,7 +214,12 @@ export default function App() {
             {/* Step 2: Piezas a cortar */}
             <PieceListEditor
               pieces={pieces}
-              onChange={setPieces}
+              onChange={(updatedPieces) => {
+                setPieces(updatedPieces);
+                if (updatedPieces.length === 0) {
+                  setActivePreset(null);
+                }
+              }}
               unit={unit}
               sheetArea={totalSheetArea}
             />
@@ -246,7 +251,7 @@ export default function App() {
             />
 
             {/* Detailed Pieces Report Table */}
-            {optimizationResult.sheets.length > 0 && (
+            {optimizationResult.totalPiecesPlaced > 0 && (
               <PiecesReportTable
                 result={optimizationResult}
                 unit={unit}
@@ -255,11 +260,13 @@ export default function App() {
             )}
 
             {/* 3D Furniture Assembly & Exploded Model Viewer */}
-            <Furniture3DViewer
-              preset={activePreset}
-              pieces={pieces}
-              unit={unit}
-            />
+            {pieces.length > 0 && (
+              <Furniture3DViewer
+                preset={activePreset}
+                pieces={pieces}
+                unit={unit}
+              />
+            )}
           </div>
         </div>
       </main>
