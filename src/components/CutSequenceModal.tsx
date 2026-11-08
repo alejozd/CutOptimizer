@@ -35,9 +35,15 @@ export const CutSequenceModal: React.FC<CutSequenceModalProps> = ({
 
   if (!currentSheet) return null;
 
-  // Group cuts by stage (Fase 1: Cortes primarios / longitudinales pasantes, Fase 2: Cortes secundarios / transversales)
-  const stage1Cuts = currentSheet.cutLines.filter((c) => c.stage === 1);
-  const stage2Cuts = currentSheet.cutLines.filter((c) => c.stage === 2);
+  // Group cuts by stage. A stage can only start once every previous stage is done,
+  // because each cut works on a panel freed by a cut from an earlier stage.
+  const stages = new Map<number, typeof currentSheet.cutLines>();
+  for (const cut of currentSheet.cutLines) {
+    const group = stages.get(cut.stage) ?? [];
+    group.push(cut);
+    stages.set(cut.stage, group);
+  }
+  const stageGroups = [...stages.entries()].sort(([a], [b]) => a - b);
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
@@ -103,83 +109,49 @@ export const CutSequenceModal: React.FC<CutSequenceModalProps> = ({
             </div>
           )}
 
-          {/* Phase 1: Primary Rip / Cross Cuts */}
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="w-5 h-5 rounded-full bg-amber-600 text-white flex items-center justify-center text-xs font-bold">
-                1
-              </span>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-stone-900">
-                Fase 1: Cortes Primarios Pasantes ({stage1Cuts.length} cortes)
-              </h4>
-            </div>
+          {stageGroups.length === 0 && (
+            <p className="text-xs text-stone-500 italic">
+              No hay cortes interiores en esta lámina.
+            </p>
+          )}
 
-            {stage1Cuts.length === 0 ? (
-              <p className="text-xs text-stone-500 italic pl-7">
-                No hay cortes primarios pasantes en esta lámina.
-              </p>
-            ) : (
+          {stageGroups.map(([stage, cuts]) => (
+            <div key={stage}>
+              <div className="flex items-center gap-2 mb-2">
+                <span
+                  className={`w-5 h-5 rounded-full text-white flex items-center justify-center text-xs font-bold ${
+                    stage === 1 ? 'bg-amber-600' : 'bg-stone-800'
+                  }`}
+                >
+                  {stage}
+                </span>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-stone-900">
+                  Fase {stage}: {stage === 1 ? 'Cortes sobre la lámina completa' : 'Cortes sobre los paneles de la fase anterior'} ({cuts.length} cortes)
+                </h4>
+              </div>
+
               <div className="space-y-1.5 pl-7">
-                {stage1Cuts.map((cut, idx) => (
+                {cuts.map((cut, idx) => (
                   <div
                     key={cut.id}
                     className="flex items-center justify-between p-2.5 bg-stone-50 rounded-lg border border-stone-200 text-xs font-mono"
                   >
                     <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded bg-stone-200 text-stone-800 flex items-center justify-center font-bold text-[11px]">
-                        1.{idx + 1}
+                      <span className="min-w-5 h-5 px-1 rounded bg-stone-200 text-stone-800 flex items-center justify-center font-bold text-[11px]">
+                        {stage}.{idx + 1}
                       </span>
                       <span className="font-semibold text-stone-900">
                         {cut.description}
                       </span>
                     </div>
                     <span className="text-stone-500 text-[11px]">
-                      De ({Math.round(cut.x1)}, {Math.round(cut.y1)}) a ({Math.round(cut.x2)}, {Math.round(cut.y2)})
+                      Longitud: {formatLinear(Math.abs(cut.x2 - cut.x1) + Math.abs(cut.y2 - cut.y1), unit)}
                     </span>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-
-          {/* Phase 2: Secondary Section Cuts */}
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="w-5 h-5 rounded-full bg-stone-800 text-white flex items-center justify-center text-xs font-bold">
-                2
-              </span>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-stone-900">
-                Fase 2: Cortes Secundarios de Dimensionado ({stage2Cuts.length} cortes)
-              </h4>
             </div>
-
-            {stage2Cuts.length === 0 ? (
-              <p className="text-xs text-stone-500 italic pl-7">
-                Las piezas se extraen directamente tras la primera fase.
-              </p>
-            ) : (
-              <div className="space-y-1.5 pl-7">
-                {stage2Cuts.map((cut, idx) => (
-                  <div
-                    key={cut.id}
-                    className="flex items-center justify-between p-2.5 bg-stone-50 rounded-lg border border-stone-200 text-xs font-mono"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded bg-stone-200 text-stone-800 flex items-center justify-center font-bold text-[11px]">
-                        2.{idx + 1}
-                      </span>
-                      <span className="font-semibold text-stone-900">
-                        {cut.description}
-                      </span>
-                    </div>
-                    <span className="text-stone-500 text-[11px]">
-                      Longitud: {formatLinear(Math.abs(cut.x2 - cut.x1 || cut.y2 - cut.y1), unit)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          ))}
 
           {/* Final pieces checklist for this sheet */}
           <div className="pt-2 border-t border-stone-200">

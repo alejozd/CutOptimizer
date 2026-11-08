@@ -515,7 +515,11 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
                             ? 'bg-amber-100 border-amber-300 text-amber-800'
                             : 'bg-stone-100 border-stone-300 text-stone-400'
                         }`}
-                        title={piece.allowRotation ? 'Giro permitido (90°)' : 'Orientación bloqueada'}
+                        title={
+                          piece.allowRotation
+                            ? 'Giro permitido (90°): la veta no importa en esta pieza'
+                            : 'Orientación bloqueada: el largo de la pieza sigue la veta del tablero'
+                        }
                       >
                         <RotateCw className="w-3.5 h-3.5" />
                       </button>

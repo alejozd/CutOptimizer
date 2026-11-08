@@ -241,7 +241,7 @@ export const SheetConfigPanel: React.FC<SheetConfigPanelProps> = ({
               }
               className="w-full bg-white border border-stone-300 rounded-lg px-2 py-1.5 text-xs text-stone-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all cursor-pointer"
             >
-              <option value="none">Sin veta (Giro libre 90°)</option>
+              <option value="none">Sin veta</option>
               <option value="horizontal">Veta Longitudinal (Largo)</option>
               <option value="vertical">Veta Transversal (Ancho)</option>
             </select>

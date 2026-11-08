@@ -14,10 +14,10 @@ export interface PieceInput {
   length: number; // Largo
   width: number;  // Ancho
   quantity: number;
-  allowRotation: boolean; // Permitir girar 90°
+  /** May rotate 90°. When false, the piece length follows the sheet grain (or sheet length if none). */
+  allowRotation: boolean;
   color: string;
   edgeBanding: EdgeBanding;
-  grainDirection?: 'horizontal' | 'vertical' | 'none'; // Sentido de veta
 }
 
 export interface SheetConfig {
@@ -64,7 +64,7 @@ export interface WasteArea {
   y: number;
   width: number;
   height: number;
-  isUsableOffcut: boolean; // Si es un retal reutilizable (ej. mayor a 200x200mm)
+  isUsableOffcut: boolean; // Reusable offcut: short side >= 100 mm and area >= 150×150 mm
 }
 
 export interface SheetLayout {

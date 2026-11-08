@@ -9,6 +9,12 @@ import {
   WasteArea,
 } from '../types';
 
+const MM_PER_UNIT: Record<SheetConfig['unit'], number> = { mm: 1, cm: 10, in: 25.4 };
+/** Narrowest side an offcut needs to be reusable */
+const MIN_OFFCUT_SHORT_SIDE_MM = 100;
+/** Minimum offcut area, equivalent to a 150×150 mm square */
+const MIN_OFFCUT_AREA_MM2 = 150 * 150;
+
 interface InternalPiece {
   originalIndex: number;
   instanceIndex: number;
@@ -19,7 +25,6 @@ interface InternalPiece {
   allowRotation: boolean;
   color: string;
   edgeBanding: PieceInput['edgeBanding'];
-  grainDirection?: 'horizontal' | 'vertical' | 'none';
 }
 
 interface FreeRect {
@@ -27,6 +32,8 @@ interface FreeRect {
   y: number;
   width: number;
   height: number;
+  /** Number of sequential cut stages needed before this panel is physically separated */
+  depth: number;
 }
 
 /**
@@ -49,7 +56,6 @@ function expandPieces(pieces: PieceInput[]): InternalPiece[] {
         allowRotation: p.allowRotation,
         color: p.color,
         edgeBanding: p.edgeBanding,
-        grainDirection: p.grainDirection,
       });
     }
   }
@@ -87,6 +93,7 @@ class SheetPacker {
         y: this.usableY,
         width: this.usableW,
         height: this.usableH,
+        depth: 0,
       });
     }
   }
@@ -104,15 +111,7 @@ class SheetPacker {
     let bestScore1 = Infinity;
     let bestScore2 = Infinity;
 
-    // Evaluate rotations allowed
-    const canRotate = piece.allowRotation && this.sheetConfig.grainDirection === 'none';
-    const orientations: { w: number; h: number; rotated: boolean }[] = [
-      { w: piece.length, h: piece.width, rotated: false },
-    ];
-
-    if (canRotate && piece.length !== piece.width) {
-      orientations.push({ w: piece.width, h: piece.length, rotated: true });
-    }
+    const orientations = this.allowedOrientations(piece);
 
     for (let i = 0; i < this.freeRects.length; i++) {
       const rect = this.freeRects[i];
@@ -182,6 +181,20 @@ class SheetPacker {
   }
 
   /**
+   * allowRotation is the per-piece grain rule. A piece that allows rotation does not care
+   * about grain. A locked piece keeps its length along the sheet grain: unrotated when the
+   * grain runs along the sheet length (or there is none), rotated 90° when it runs across.
+   */
+  private allowedOrientations(piece: InternalPiece): { w: number; h: number; rotated: boolean }[] {
+    const unrotated = { w: piece.length, h: piece.width, rotated: false };
+    const rotated = { w: piece.width, h: piece.length, rotated: true };
+
+    if (piece.length === piece.width) return [unrotated];
+    if (piece.allowRotation) return [unrotated, rotated];
+    return this.sheetConfig.grainDirection === 'vertical' ? [rotated] : [unrotated];
+  }
+
+  /**
    * Performs a woodworking guillotine split with blade kerf
    */
   private splitGuillotine(
@@ -206,104 +219,71 @@ class SheetPacker {
       splitHorizontal = pieceW > pieceH;
     }
 
-    if (splitHorizontal) {
-      // Horizontal guillotine cut right below the piece across the entire width of the rectangle
-      // Top section: Piece on left, remaining right free rect
-      const rightW = remW - k;
-      if (rightW > 0) {
-        this.freeRects.push({
-          x: rect.x + pieceW + k,
-          y: rect.y,
-          width: rightW,
-          height: pieceH,
-        });
+    // A guillotine split is two sequential cuts: a primary cut across the whole panel,
+    // then a secondary cut across the strip that holds the piece. The secondary cut can
+    // only be made once the primary cut has separated that strip, so it is one stage later.
+    const baseStage = rect.depth + 1;
+    const pieceRight = rect.x + pieceW;
+    const pieceBottom = rect.y + pieceH;
 
-        this.cutLines.push({
-          id: `cut-${this.cutCounter++}`,
-          x1: rect.x + pieceW,
-          y1: rect.y,
-          x2: rect.x + pieceW,
-          y2: rect.y + pieceH,
-          orientation: 'vertical',
-          stage: 2,
-          position: rect.x + pieceW,
-          description: `Corte vertical a ${Math.round(rect.x + pieceW)} mm`,
-        });
+    if (splitHorizontal) {
+      // Primary: horizontal cut under the piece across the full panel width
+      const bottomH = remH - k;
+      const hasPrimary = bottomH > 0;
+      if (hasPrimary) {
+        this.pushCut('horizontal', pieceBottom, rect.x, rect.x + rect.width, baseStage);
+        this.freeRects.push({ x: rect.x, y: pieceBottom + k, width: rect.width, height: bottomH, depth: baseStage });
       }
 
-      // Bottom section: Remaining full width under the piece
-      const bottomH = remH - k;
-      if (bottomH > 0) {
-        this.freeRects.push({
-          x: rect.x,
-          y: rect.y + pieceH + k,
-          width: rect.width,
-          height: bottomH,
-        });
-
-        this.cutLines.push({
-          id: `cut-${this.cutCounter++}`,
-          x1: rect.x,
-          y1: rect.y + pieceH,
-          x2: rect.x + rect.width,
-          y2: rect.y + pieceH,
-          orientation: 'horizontal',
-          stage: 1,
-          position: rect.y + pieceH,
-          description: `Corte horizontal pasante a ${Math.round(rect.y + pieceH)} mm`,
-        });
+      // Secondary: vertical cut beside the piece, within the top strip
+      const rightW = remW - k;
+      if (rightW > 0) {
+        const stage = hasPrimary ? baseStage + 1 : baseStage;
+        this.pushCut('vertical', pieceRight, rect.y, pieceBottom, stage);
+        this.freeRects.push({ x: pieceRight + k, y: rect.y, width: rightW, height: pieceH, depth: stage });
       }
     } else {
-      // Vertical guillotine cut to the right of the piece across the entire height of the rectangle
-      // Left section: Piece on top, remaining bottom free rect
-      const bottomH = remH - k;
-      if (bottomH > 0) {
-        this.freeRects.push({
-          x: rect.x,
-          y: rect.y + pieceH + k,
-          width: pieceW,
-          height: bottomH,
-        });
-
-        this.cutLines.push({
-          id: `cut-${this.cutCounter++}`,
-          x1: rect.x,
-          y1: rect.y + pieceH,
-          x2: rect.x + pieceW,
-          y2: rect.y + pieceH,
-          orientation: 'horizontal',
-          stage: 2,
-          position: rect.y + pieceH,
-          description: `Corte horizontal a ${Math.round(rect.y + pieceH)} mm`,
-        });
+      // Primary: vertical cut beside the piece across the full panel height
+      const rightW = remW - k;
+      const hasPrimary = rightW > 0;
+      if (hasPrimary) {
+        this.pushCut('vertical', pieceRight, rect.y, rect.y + rect.height, baseStage);
+        this.freeRects.push({ x: pieceRight + k, y: rect.y, width: rightW, height: rect.height, depth: baseStage });
       }
 
-      // Right section: Remaining full height to the right
-      const rightW = remW - k;
-      if (rightW > 0) {
-        this.freeRects.push({
-          x: rect.x + pieceW + k,
-          y: rect.y,
-          width: rightW,
-          height: rect.height,
-        });
-
-        this.cutLines.push({
-          id: `cut-${this.cutCounter++}`,
-          x1: rect.x + pieceW,
-          y1: rect.y,
-          x2: rect.x + pieceW,
-          y2: rect.y + rect.height,
-          orientation: 'vertical',
-          stage: 1,
-          position: rect.x + pieceW,
-          description: `Corte vertical pasante a ${Math.round(rect.x + pieceW)} mm`,
-        });
+      // Secondary: horizontal cut under the piece, within the left strip
+      const bottomH = remH - k;
+      if (bottomH > 0) {
+        const stage = hasPrimary ? baseStage + 1 : baseStage;
+        this.pushCut('horizontal', pieceBottom, rect.x, pieceRight, stage);
+        this.freeRects.push({ x: rect.x, y: pieceBottom + k, width: pieceW, height: bottomH, depth: stage });
       }
     }
 
     // Clean up empty or negligible free rectangles
     this.freeRects = this.freeRects.filter((r) => r.width >= 1 && r.height >= 1);
+  }
+
+  private pushCut(
+    orientation: 'horizontal' | 'vertical',
+    position: number,
+    from: number,
+    to: number,
+    stage: number
+  ) {
+    const isVertical = orientation === 'vertical';
+    const label = isVertical ? 'Corte vertical' : 'Corte horizontal';
+    this.cutLines.push({
+      id: `cut-${this.cutCounter++}`,
+      x1: isVertical ? position : from,
+      y1: isVertical ? from : position,
+      x2: isVertical ? position : to,
+      y2: isVertical ? to : position,
+      orientation,
+      stage,
+      position,
+      description: `${label} a ${Math.round(position)} ${this.sheetConfig.unit} (tramo ${Math.round(from)}–${Math.round(to)})`,
+    });
   }
 
   /**
@@ -320,15 +300,16 @@ class SheetPacker {
 
     // Identify waste / offcut areas
     const wasteAreas: WasteArea[] = [];
-    // Minimum threshold for a piece to be a "usable offcut" / retal útil
-    // e.g., at least 200mm x 200mm or area >= 50,000 mm²
-    const minUsableSide = this.sheetConfig.unit === 'in' ? 6 : 150;
-    const minUsableArea = this.sheetConfig.unit === 'in' ? 40 : 30000;
+    // A "retal útil" must be wide enough to work with AND big enough to be worth keeping.
+    // Thresholds are defined in mm and converted to the sheet's unit.
+    const mmPerUnit = MM_PER_UNIT[this.sheetConfig.unit];
+    const minShortSide = MIN_OFFCUT_SHORT_SIDE_MM / mmPerUnit;
+    const minArea = MIN_OFFCUT_AREA_MM2 / (mmPerUnit * mmPerUnit);
 
     for (let i = 0; i < this.freeRects.length; i++) {
       const fr = this.freeRects[i];
       const area = fr.width * fr.height;
-      const isUsable = (fr.width >= minUsableSide && fr.height >= minUsableSide) || area >= minUsableArea;
+      const isUsable = Math.min(fr.width, fr.height) >= minShortSide && area >= minArea;
       wasteAreas.push({
         id: `waste-${sheetIndex}-${i}`,
         x: fr.x,
@@ -358,7 +339,8 @@ class SheetPacker {
       sheetConfig: this.sheetConfig,
       placedPieces: this.placedPieces,
       wasteAreas,
-      cutLines: this.cutLines,
+      // Stable sort: every cut appears after the cuts that free its panel
+      cutLines: [...this.cutLines].sort((a, b) => a.stage - b.stage),
       usedArea,
       usableArea,
       totalSheetArea,
