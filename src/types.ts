@@ -85,8 +85,9 @@ export interface SheetLayout {
 /**
  * too_large: does not fit an empty sheet in any allowed orientation.
  * sheet_limit: fits, but the optimizer stopped at its maximum number of sheets.
+ * invalid_size: edge banding thickness leaves no material to cut.
  */
-export type UnplacedReason = 'too_large' | 'sheet_limit';
+export type UnplacedReason = 'too_large' | 'sheet_limit' | 'invalid_size';
 
 export interface UnplacedPiece {
   piece: PieceInput;

@@ -107,6 +107,18 @@ describe('optimizeCuts — edge banding thickness', () => {
     expect(result.sheets[0].placedPieces[0].width).toBe(2440);
   });
 
+  it('refuses to place a piece whose banding leaves no material to cut', () => {
+    // 3 mm finished width with 2 mm banding on both long edges: cut width would be −1 mm
+    const result = optimizeCuts(
+      [banded({ top: true, bottom: true }, 600, 3), { ...banded({}, 500, 300), id: 'ok' }],
+      sheet({ edgeBandingThickness: 2 })
+    );
+
+    expect(result.totalPiecesPlaced).toBe(1);
+    expect(result.sheets.flatMap((s) => s.placedPieces).every((p) => p.width > 0 && p.height > 0)).toBe(true);
+    expect(result.unplacedPieces).toEqual([expect.objectContaining({ remainingQty: 1, reason: 'invalid_size' })]);
+  });
+
   it('leaves sizes unchanged when no thickness is configured', () => {
     const result = optimizeCuts([banded({ top: true, bottom: true, left: true, right: true })], sheet());
     const placed = result.sheets[0].placedPieces[0];

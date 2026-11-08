@@ -54,11 +54,13 @@ export const ResultDashboard: React.FC<ResultDashboardProps> = ({
               {unplacedPieces.map((un) => (
                 <li key={un.piece.id}>
                   {un.piece.name} ({un.piece.length} × {un.piece.width} {unit}) — {un.remainingQty} unidad(es):{' '}
-                  {un.reason === 'too_large'
-                    ? un.piece.allowRotation
-                      ? 'no cabe en el área útil del tablero'
-                      : 'no cabe con la orientación bloqueada (prueba a permitir el giro)'
-                    : 'se alcanzó el máximo de 50 láminas por cálculo'}
+                  {un.reason === 'invalid_size'
+                    ? 'el espesor de tapacanto deja la pieza sin material para cortar'
+                    : un.reason === 'too_large'
+                      ? un.piece.allowRotation
+                        ? 'no cabe en el área útil del tablero'
+                        : 'no cabe con la orientación bloqueada (prueba a permitir el giro)'
+                      : 'se alcanzó el máximo de 50 láminas por cálculo'}
                 </li>
               ))}
             </ul>

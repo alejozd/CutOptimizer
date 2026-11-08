@@ -7,6 +7,7 @@ import {
   SheetConfig,
   SheetLayout,
   UnplacedPiece,
+  UnplacedReason,
   WasteArea,
 } from '../types';
 
@@ -89,6 +90,12 @@ function fitsEmptySheet(piece: PieceInput, sheetConfig: SheetConfig): boolean {
   return allowedOrientations(size, sheetConfig).some((o) => o.w <= usableW && o.h <= usableH);
 }
 
+function unplacedReason(piece: PieceInput, sheetConfig: SheetConfig): UnplacedReason {
+  const cut = cutSize(piece, sheetConfig);
+  if (cut.length <= 0 || cut.width <= 0) return 'invalid_size';
+  return fitsEmptySheet(piece, sheetConfig) ? 'sheet_limit' : 'too_large';
+}
+
 /**
  * Expands piece inputs into individual piece instances
  */
@@ -162,6 +169,9 @@ class SheetPacker {
     splitStrategy: 'horizontal_first' | 'vertical_first' | 'shorter_axis' | 'longer_axis',
     fitRule: 'bssf' | 'blsf' | 'baf' = 'bssf'
   ): boolean {
+    // Banding thicker than the piece leaves nothing to cut; never place it
+    if (piece.length <= 0 || piece.width <= 0) return false;
+
     let bestRectIndex = -1;
     let bestRotated = false;
     let bestScore1 = Infinity;
@@ -651,7 +661,7 @@ export function optimizeCuts(
   for (const p of pieces) {
     const unQty = unplacedMap.get(p.id) || 0;
     if (unQty > 0) {
-      const reason = fitsEmptySheet(p, sheetConfig) ? 'sheet_limit' : 'too_large';
+      const reason = unplacedReason(p, sheetConfig);
       unplacedPieces.push({ piece: p, remainingQty: unQty, reason });
     }
   }
