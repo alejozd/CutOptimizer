@@ -48,10 +48,10 @@ export const OptimizerControls: React.FC<OptimizerControlsProps> = ({
               📐 Guillotina Vertical (Cortes transversales primero)
             </option>
             <option value="maxrects_bssf">
-              🧩 MaxRects - Ajuste Lado Corto (Best Short Side Fit)
+              🧩 Guillotina - Ajuste por Lado Corto (Best Short Side Fit)
             </option>
             <option value="maxrects_blsf">
-              🧩 MaxRects - Ajuste Lado Largo (Best Long Side Fit)
+              🧩 Guillotina - Ajuste por Lado Largo (Best Long Side Fit)
             </option>
           </select>
         </div>

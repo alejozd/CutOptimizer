@@ -371,14 +371,18 @@ export const SheetCanvasView: React.FC<SheetCanvasViewProps> = ({
                       strokeWidth="1"
                       opacity="0.85"
                     />
-                    {w.isUsableOffcut && w.width > 120 && w.height > 80 && (
+                    {/* Label only when it fits; thresholds relative to the sheet so they work in any unit */}
+                    {w.isUsableOffcut && w.width > sheetConfig.length * 0.05 && w.height > sheetConfig.width * 0.065 && (
                       <text
                         x={w.x + w.width / 2}
                         y={w.y + w.height / 2}
                         textAnchor="middle"
                         dominantBaseline="middle"
                         fill="#15803d"
-                        fontSize={Math.min(18, Math.max(10, Math.min(w.width, w.height) / 8))}
+                        fontSize={Math.min(
+                          sheetConfig.length * 0.0075,
+                          Math.max(sheetConfig.length * 0.004, Math.min(w.width, w.height) / 8)
+                        )}
                         fontWeight="600"
                         className="font-mono"
                       >

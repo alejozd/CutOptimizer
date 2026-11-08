@@ -12,6 +12,11 @@ import {
   Printer
 } from 'lucide-react';
 
+function stageTitle(stage: number, hasTrim: boolean): string {
+  if (stage > 1) return 'Cortes sobre los paneles de la fase anterior';
+  return hasTrim ? 'Cortes sobre el tablero ya refilado' : 'Cortes sobre la lámina completa';
+}
+
 interface CutSequenceModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -126,7 +131,7 @@ export const CutSequenceModal: React.FC<CutSequenceModalProps> = ({
                   {stage}
                 </span>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-stone-900">
-                  Fase {stage}: {stage === 1 ? 'Cortes sobre la lámina completa' : 'Cortes sobre los paneles de la fase anterior'} ({cuts.length} cortes)
+                  Fase {stage}: {stageTitle(stage, currentSheet.sheetConfig.trimMargin > 0)} ({cuts.length} cortes)
                 </h4>
               </div>
 

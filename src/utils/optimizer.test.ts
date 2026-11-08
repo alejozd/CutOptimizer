@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { optimizeCuts } from './optimizer';
+import { MM_PER_UNIT, optimizeCuts } from './optimizer';
 import { AlgorithmType, CutLine, PieceInput, SheetConfig, SheetLayout } from '../types';
 
 const noBanding = { top: false, bottom: false, left: false, right: false };
@@ -64,6 +64,88 @@ function blockingCuts(layout: SheetLayout): string[] {
   return layout.cutLines.map((c) => findBlockingEndpoint(c, layout)).filter((m): m is string => m !== null);
 }
 
+describe('optimizeCuts — unplaced pieces', () => {
+  it('reports a piece larger than the sheet as too large', () => {
+    const result = optimizeCuts([piece('giant', 3000, 500, 1, true)], sheet());
+
+    expect(result.unplacedPieces).toEqual([
+      expect.objectContaining({ remainingQty: 1, reason: 'too_large' }),
+    ]);
+  });
+
+  it('reports a locked piece that only fits rotated as too large', () => {
+    const result = optimizeCuts([piece('door', 1000, 2000, 1, false)], sheet({ grainDirection: 'horizontal' }));
+
+    expect(result.unplacedPieces[0].reason).toBe('too_large');
+  });
+
+  it('reports pieces left over by the sheet limit separately from oversized ones', () => {
+    // Each piece needs its own sheet; the optimizer stops at 50 sheets
+    const result = optimizeCuts([piece('top', 2440, 1220, 55), piece('giant', 3000, 500, 1)], sheet());
+
+    expect(result.totalSheetsNeeded).toBe(50);
+    expect(result.unplacedPieces).toEqual([
+      expect.objectContaining({ piece: expect.objectContaining({ id: 'top' }), remainingQty: 5, reason: 'sheet_limit' }),
+      expect.objectContaining({ piece: expect.objectContaining({ id: 'giant' }), remainingQty: 1, reason: 'too_large' }),
+    ]);
+  });
+});
+
+describe('optimizeCuts — determinism', () => {
+  it('returns identical layouts for identical input', () => {
+    const pieces = [piece('a', 600, 400, 3, true), piece('b', 300, 200, 5, true)];
+    const strip = ({ calculationTimeMs, ...rest }: ReturnType<typeof optimizeCuts>) => rest;
+
+    expect(strip(optimizeCuts(pieces, sheet()))).toEqual(strip(optimizeCuts(pieces, sheet())));
+  });
+});
+
+describe('optimizeCuts — choosing the best variant', () => {
+  const usableOffcutArea = (sheets: SheetLayout[]) =>
+    sheets.flatMap((s) => s.wasteAreas).reduce((sum, w) => (w.isUsableOffcut ? sum + w.width * w.height : sum), 0);
+
+  const jobs: { name: string; pieces: PieceInput[] }[] = [
+    {
+      name: 'wardrobe',
+      pieces: [
+        piece('side', 2000, 580, 2, true),
+        piece('shelf', 864, 560, 4, true),
+        piece('door', 1990, 445, 2, false),
+        piece('plinth', 864, 100, 2, true),
+      ],
+    },
+    {
+      name: 'drawers',
+      pieces: [piece('front', 596, 180, 6, true), piece('side', 500, 150, 12, true), piece('bottom', 520, 480, 3, true)],
+    },
+    {
+      name: 'bookcase',
+      pieces: [piece('side', 1800, 300, 2, true), piece('shelf', 764, 280, 6, true), piece('back', 800, 600, 1, true)],
+    },
+  ];
+
+  const explicitAlgorithms: AlgorithmType[] = [
+    'guillotine_horizontal',
+    'guillotine_vertical',
+    'maxrects_bssf',
+    'maxrects_blsf',
+  ];
+
+  for (const job of jobs) {
+    it(`auto_best keeps at least as much usable offcut as any single algorithm with the same sheets (${job.name})`, () => {
+      const best = optimizeCuts(job.pieces, sheet());
+
+      for (const algorithm of explicitAlgorithms) {
+        const other = optimizeCuts(job.pieces, sheet(), algorithm);
+        if (other.totalPiecesPlaced !== best.totalPiecesPlaced || other.totalSheetsNeeded !== best.totalSheetsNeeded) {
+          continue;
+        }
+        expect(usableOffcutArea(best.sheets), algorithm).toBeGreaterThanOrEqual(usableOffcutArea(other.sheets));
+      }
+    });
+  }
+});
+
 describe('optimizeCuts — grain and rotation', () => {
   // 1000×2000 only fits a 2440×1220 sheet when rotated 90°
   const tallPiece = (allowRotation: boolean) => piece('door', 1000, 2000, 1, allowRotation);
@@ -99,10 +181,8 @@ describe('optimizeCuts — grain and rotation', () => {
 });
 
 describe('optimizeCuts — usable offcut classification', () => {
-  const MM_PER: Record<SheetConfig['unit'], number> = { mm: 1, cm: 10, in: 25.4 };
-
   function offcutsFor(unit: SheetConfig['unit']) {
-    const f = MM_PER[unit];
+    const f = MM_PER_UNIT[unit];
     // Same physical layout in every unit: 2440×1220 mm sheet, one 2000×800 mm piece
     const result = optimizeCuts(
       [piece('a', 2000 / f, 800 / f)],
@@ -147,6 +227,16 @@ describe('optimizeCuts — cut sequence', () => {
     expect(cutUnderA).toBeDefined();
     expect(cutBesideC).toBeDefined();
     expect(cutBesideC.stage).toBeGreaterThan(cutUnderA.stage);
+  });
+
+  it('still records the sizing cut when the leftover is no wider than the kerf', () => {
+    // 2440 − 2436 = 4 mm leftover, exactly one kerf: no offcut, but the piece must still be cut to size
+    const result = optimizeCuts([piece('a', 2436, 1220)], sheet(), 'guillotine_vertical');
+    const cuts = result.sheets[0].cutLines;
+
+    expect(cuts).toHaveLength(1);
+    expect(cuts[0]).toMatchObject({ orientation: 'vertical', position: 2436 });
+    expect(result.sheets[0].wasteAreas).toEqual([]);
   });
 
   it('returns cuts ordered by stage so they can be executed top to bottom', () => {

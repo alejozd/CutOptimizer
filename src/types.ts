@@ -81,12 +81,24 @@ export interface SheetLayout {
   cutsLength: number;
 }
 
+/**
+ * too_large: does not fit an empty sheet in any allowed orientation.
+ * sheet_limit: fits, but the optimizer stopped at its maximum number of sheets.
+ */
+export type UnplacedReason = 'too_large' | 'sheet_limit';
+
+export interface UnplacedPiece {
+  piece: PieceInput;
+  remainingQty: number;
+  reason: UnplacedReason;
+}
+
 export interface OptimizationResult {
   sheets: SheetLayout[];
   totalSheetsNeeded: number;
   totalPiecesPlaced: number;
   totalPiecesRequested: number;
-  unplacedPieces: { piece: PieceInput; remainingQty: number }[];
+  unplacedPieces: UnplacedPiece[];
   overallEfficiency: number;
   totalUsedArea: number;
   totalWasteArea: number;

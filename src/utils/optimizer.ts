@@ -6,10 +6,13 @@ import {
   PlacedPiece,
   SheetConfig,
   SheetLayout,
+  UnplacedPiece,
   WasteArea,
 } from '../types';
 
-const MM_PER_UNIT: Record<SheetConfig['unit'], number> = { mm: 1, cm: 10, in: 25.4 };
+export const MM_PER_UNIT: Record<SheetConfig['unit'], number> = { mm: 1, cm: 10, in: 25.4 };
+/** Tolerance for floating-point leftovers when deciding whether material remains */
+const EPSILON = 1e-6;
 /** Narrowest side an offcut needs to be reusable */
 const MIN_OFFCUT_SHORT_SIDE_MM = 100;
 /** Minimum offcut area, equivalent to a 150×150 mm square */
@@ -34,6 +37,37 @@ interface FreeRect {
   height: number;
   /** Number of sequential cut stages needed before this panel is physically separated */
   depth: number;
+}
+
+interface Orientation {
+  w: number;
+  h: number;
+  rotated: boolean;
+}
+
+/**
+ * allowRotation is the per-piece grain rule. A piece that allows rotation does not care
+ * about grain. A locked piece keeps its length along the sheet grain: unrotated when the
+ * grain runs along the sheet length (or there is none), rotated 90° when it runs across.
+ */
+function allowedOrientations(
+  piece: Pick<PieceInput, 'length' | 'width' | 'allowRotation'>,
+  sheetConfig: SheetConfig
+): Orientation[] {
+  const unrotated = { w: piece.length, h: piece.width, rotated: false };
+  const rotated = { w: piece.width, h: piece.length, rotated: true };
+
+  if (piece.length === piece.width) return [unrotated];
+  if (piece.allowRotation) return [unrotated, rotated];
+  return sheetConfig.grainDirection === 'vertical' ? [rotated] : [unrotated];
+}
+
+/** Whether the piece fits an empty sheet in at least one allowed orientation */
+function fitsEmptySheet(piece: PieceInput, sheetConfig: SheetConfig): boolean {
+  const margin = Math.max(0, sheetConfig.trimMargin);
+  const usableW = sheetConfig.length - 2 * margin;
+  const usableH = sheetConfig.width - 2 * margin;
+  return allowedOrientations(piece, sheetConfig).some((o) => o.w <= usableW && o.h <= usableH);
 }
 
 /**
@@ -63,7 +97,7 @@ function expandPieces(pieces: PieceInput[]): InternalPiece[] {
 }
 
 /**
- * Guillotine / MaxRects Bin Packer for a single sheet
+ * Guillotine bin packer for a single sheet (every split is a straight through-cut)
  */
 class SheetPacker {
   private sheetConfig: SheetConfig;
@@ -111,7 +145,7 @@ class SheetPacker {
     let bestScore1 = Infinity;
     let bestScore2 = Infinity;
 
-    const orientations = this.allowedOrientations(piece);
+    const orientations = allowedOrientations(piece, this.sheetConfig);
 
     for (let i = 0; i < this.freeRects.length; i++) {
       const rect = this.freeRects[i];
@@ -158,7 +192,8 @@ class SheetPacker {
     const placeH = bestRotated ? piece.length : piece.width;
 
     const placed: PlacedPiece = {
-      id: `${piece.pieceId}-${piece.instanceIndex}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      // instanceIndex is unique per run, so the id is stable across identical runs
+      id: `${piece.pieceId}-${piece.instanceIndex}`,
       pieceId: piece.pieceId,
       pieceName: piece.name,
       x: targetRect.x,
@@ -178,20 +213,6 @@ class SheetPacker {
     this.splitGuillotine(targetRect, placeW, placeH, splitStrategy);
 
     return true;
-  }
-
-  /**
-   * allowRotation is the per-piece grain rule. A piece that allows rotation does not care
-   * about grain. A locked piece keeps its length along the sheet grain: unrotated when the
-   * grain runs along the sheet length (or there is none), rotated 90° when it runs across.
-   */
-  private allowedOrientations(piece: InternalPiece): { w: number; h: number; rotated: boolean }[] {
-    const unrotated = { w: piece.length, h: piece.width, rotated: false };
-    const rotated = { w: piece.width, h: piece.length, rotated: true };
-
-    if (piece.length === piece.width) return [unrotated];
-    if (piece.allowRotation) return [unrotated, rotated];
-    return this.sheetConfig.grainDirection === 'vertical' ? [rotated] : [unrotated];
   }
 
   /**
@@ -226,37 +247,47 @@ class SheetPacker {
     const pieceRight = rect.x + pieceW;
     const pieceBottom = rect.y + pieceH;
 
+    // A cut is needed whenever material remains beside the piece, even if that material
+    // is no wider than the kerf (the blade then removes it while sizing the piece).
+    // A free rectangle only exists if something is left after the kerf.
+    const needsCutRight = remW > EPSILON;
+    const needsCutBelow = remH > EPSILON;
+    const rightW = remW - k;
+    const bottomH = remH - k;
+
     if (splitHorizontal) {
       // Primary: horizontal cut under the piece across the full panel width
-      const bottomH = remH - k;
-      const hasPrimary = bottomH > 0;
-      if (hasPrimary) {
+      if (needsCutBelow) {
         this.pushCut('horizontal', pieceBottom, rect.x, rect.x + rect.width, baseStage);
-        this.freeRects.push({ x: rect.x, y: pieceBottom + k, width: rect.width, height: bottomH, depth: baseStage });
+        if (bottomH > 0) {
+          this.freeRects.push({ x: rect.x, y: pieceBottom + k, width: rect.width, height: bottomH, depth: baseStage });
+        }
       }
 
       // Secondary: vertical cut beside the piece, within the top strip
-      const rightW = remW - k;
-      if (rightW > 0) {
-        const stage = hasPrimary ? baseStage + 1 : baseStage;
+      if (needsCutRight) {
+        const stage = needsCutBelow ? baseStage + 1 : baseStage;
         this.pushCut('vertical', pieceRight, rect.y, pieceBottom, stage);
-        this.freeRects.push({ x: pieceRight + k, y: rect.y, width: rightW, height: pieceH, depth: stage });
+        if (rightW > 0) {
+          this.freeRects.push({ x: pieceRight + k, y: rect.y, width: rightW, height: pieceH, depth: stage });
+        }
       }
     } else {
       // Primary: vertical cut beside the piece across the full panel height
-      const rightW = remW - k;
-      const hasPrimary = rightW > 0;
-      if (hasPrimary) {
+      if (needsCutRight) {
         this.pushCut('vertical', pieceRight, rect.y, rect.y + rect.height, baseStage);
-        this.freeRects.push({ x: pieceRight + k, y: rect.y, width: rightW, height: rect.height, depth: baseStage });
+        if (rightW > 0) {
+          this.freeRects.push({ x: pieceRight + k, y: rect.y, width: rightW, height: rect.height, depth: baseStage });
+        }
       }
 
       // Secondary: horizontal cut under the piece, within the left strip
-      const bottomH = remH - k;
-      if (bottomH > 0) {
-        const stage = hasPrimary ? baseStage + 1 : baseStage;
+      if (needsCutBelow) {
+        const stage = needsCutRight ? baseStage + 1 : baseStage;
         this.pushCut('horizontal', pieceBottom, rect.x, pieceRight, stage);
-        this.freeRects.push({ x: rect.x, y: pieceBottom + k, width: pieceW, height: bottomH, depth: stage });
+        if (bottomH > 0) {
+          this.freeRects.push({ x: rect.x, y: pieceBottom + k, width: pieceW, height: bottomH, depth: stage });
+        }
       }
     }
 
@@ -396,6 +427,39 @@ function runSimulation(
   return { sheets, unplaced: remainingPieces };
 }
 
+interface SimulationQuality {
+  placedCount: number;
+  sheetCount: number;
+  usableOffcutArea: number;
+  cutLength: number;
+}
+
+function measureQuality(sheets: SheetLayout[], placedCount: number): SimulationQuality {
+  let usableOffcutArea = 0;
+  let cutLength = 0;
+  for (const s of sheets) {
+    cutLength += s.cutsLength;
+    for (const w of s.wasteAreas) {
+      if (w.isUsableOffcut) usableOffcutArea += w.width * w.height;
+    }
+  }
+  return { placedCount, sheetCount: sheets.length, usableOffcutArea, cutLength };
+}
+
+/**
+ * Ranks two simulations, in priority order:
+ * 1. more pieces placed, 2. fewer sheets, 3. more usable offcut area
+ *    (with equal pieces and sheets the used area is identical, so what differs
+ *    is whether the waste is one reusable board or many slivers),
+ * 4. less total cut length (less saw work).
+ */
+function isBetter(a: SimulationQuality, b: SimulationQuality): boolean {
+  if (a.placedCount !== b.placedCount) return a.placedCount > b.placedCount;
+  if (a.sheetCount !== b.sheetCount) return a.sheetCount < b.sheetCount;
+  if (a.usableOffcutArea !== b.usableOffcutArea) return a.usableOffcutArea > b.usableOffcutArea;
+  return a.cutLength < b.cutLength;
+}
+
 /**
  * Master optimizer function
  */
@@ -472,13 +536,13 @@ export function optimizeCuts(
     });
   } else if (algorithm === 'maxrects_bssf') {
     variants.push({
-      name: 'MaxRects (Best Short Side Fit)',
+      name: 'Guillotina (Ajuste por Lado Corto)',
       splitStrategy: 'shorter_axis',
       fitRule: 'bssf',
     });
   } else if (algorithm === 'maxrects_blsf') {
     variants.push({
-      name: 'MaxRects (Best Long Side Fit)',
+      name: 'Guillotina (Ajuste por Lado Largo)',
       splitStrategy: 'longer_axis',
       fitRule: 'blsf',
     });
@@ -496,12 +560,12 @@ export function optimizeCuts(
         fitRule: 'bssf',
       },
       {
-        name: 'MaxRects Ajuste de Lado Corto (BSSF)',
+        name: 'Guillotina Ajuste por Lado Corto (BSSF)',
         splitStrategy: 'shorter_axis',
         fitRule: 'bssf',
       },
       {
-        name: 'MaxRects Ajuste de Lado Largo (BLSF)',
+        name: 'Guillotina Ajuste por Lado Largo (BLSF)',
         splitStrategy: 'longer_axis',
         fitRule: 'blsf',
       },
@@ -517,36 +581,20 @@ export function optimizeCuts(
     sheets: SheetLayout[];
     unplaced: InternalPiece[];
     algorithmName: string;
-    efficiencyScore: number;
+    quality: SimulationQuality;
   } | null = null;
 
   for (const variant of variants) {
     for (const sortHeuristic of sortingHeuristics) {
       const sim = runSimulation(allPieces, sheetConfig, sortHeuristic.fn, variant.splitStrategy, variant.fitRule);
+      const quality = measureQuality(sim.sheets, allPieces.length - sim.unplaced.length);
 
-      const placedCount = allPieces.length - sim.unplaced.length;
-      const sheetCount = sim.sheets.length;
-
-      let totalUsed = 0;
-      let totalSheet = 0;
-      for (const s of sim.sheets) {
-        totalUsed += s.usedArea;
-        totalSheet += s.totalSheetArea;
-      }
-      const overallEff = totalSheet > 0 ? (totalUsed / totalSheet) * 100 : 0;
-
-      // Quality score formula:
-      // 1. Placing the maximum number of pieces (primary weight)
-      // 2. Using fewer sheets (heavy bonus)
-      // 3. Higher efficiency % (fine-tuning)
-      const score = placedCount * 100000 - sheetCount * 10000 + overallEff;
-
-      if (!bestResult || score > bestResult.efficiencyScore) {
+      if (!bestResult || isBetter(quality, bestResult.quality)) {
         bestResult = {
           sheets: sim.sheets,
           unplaced: sim.unplaced,
           algorithmName: `${variant.name} (${sortHeuristic.name})`,
-          efficiencyScore: score,
+          quality,
         };
       }
     }
@@ -577,11 +625,12 @@ export function optimizeCuts(
   for (const un of bestResult.unplaced) {
     unplacedMap.set(un.pieceId, (unplacedMap.get(un.pieceId) || 0) + 1);
   }
-  const unplacedPieces: { piece: PieceInput; remainingQty: number }[] = [];
+  const unplacedPieces: UnplacedPiece[] = [];
   for (const p of pieces) {
     const unQty = unplacedMap.get(p.id) || 0;
     if (unQty > 0) {
-      unplacedPieces.push({ piece: p, remainingQty: unQty });
+      const reason = fitsEmptySheet(p, sheetConfig) ? 'sheet_limit' : 'too_large';
+      unplacedPieces.push({ piece: p, remainingQty: unQty, reason });
     }
   }
 

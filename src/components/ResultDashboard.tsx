@@ -50,13 +50,15 @@ export const ResultDashboard: React.FC<ResultDashboardProps> = ({
             <h4 className="font-bold text-red-900">
               Atención: {unplacedPieces.reduce((s, p) => s + p.remainingQty, 0)} piezas no pudieron colocarse
             </h4>
-            <p className="text-red-700 mt-0.5">
-              Algunas piezas exceden el tamaño disponible en el tablero o se requiere aumentar el número de láminas:
-            </p>
             <ul className="mt-1.5 list-disc list-inside font-mono text-[11px] space-y-0.5 text-red-800">
-              {unplacedPieces.map((un, idx) => (
-                <li key={idx}>
-                  {un.piece.name} ({un.piece.length} × {un.piece.width} {unit}) — {un.remainingQty} unidad(es) pendiente(s)
+              {unplacedPieces.map((un) => (
+                <li key={un.piece.id}>
+                  {un.piece.name} ({un.piece.length} × {un.piece.width} {unit}) — {un.remainingQty} unidad(es):{' '}
+                  {un.reason === 'too_large'
+                    ? un.piece.allowRotation
+                      ? 'no cabe en el área útil del tablero'
+                      : 'no cabe con la orientación bloqueada (prueba a permitir el giro)'
+                    : 'se alcanzó el máximo de 50 láminas por cálculo'}
                 </li>
               ))}
             </ul>
