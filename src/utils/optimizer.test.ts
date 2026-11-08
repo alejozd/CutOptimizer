@@ -199,6 +199,32 @@ describe('optimizeCuts — unplaced pieces', () => {
   });
 });
 
+describe('optimizeCuts — furniture groups', () => {
+  it('carries each piece furniture group into the placed pieces', () => {
+    const result = optimizeCuts(
+      [
+        { ...piece('side', 720, 560, 2), furnitureGroup: 'Mesita de Noche' },
+        { ...piece('shelf', 800, 300, 1), furnitureGroup: 'Estantería' },
+        piece('loose', 200, 200, 1),
+      ],
+      sheet()
+    );
+    const groupsById = result.sheets
+      .flatMap((s) => s.placedPieces)
+      .map((p) => [p.pieceId, p.furnitureGroup] as const);
+
+    expect(groupsById).toEqual(
+      expect.arrayContaining([
+        ['side', 'Mesita de Noche'],
+        ['side', 'Mesita de Noche'],
+        ['shelf', 'Estantería'],
+        ['loose', undefined],
+      ])
+    );
+    expect(groupsById).toHaveLength(4);
+  });
+});
+
 describe('optimizeCuts — determinism', () => {
   it('returns identical layouts for identical input', () => {
     const pieces = [piece('a', 600, 400, 3, true), piece('b', 300, 200, 5, true)];

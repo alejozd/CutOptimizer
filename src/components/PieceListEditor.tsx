@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { EdgeBanding, PieceInput, Unit } from '../types';
 import { PIECE_COLORS } from '../utils/presets';
+import { CsvCell, buildCsv, csvDataUri } from '../utils/csv';
 import { formatArea } from '../utils/optimizer';
 import { 
   Plus, 
@@ -187,23 +188,21 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
   // Direct CSV Export from the Editor
   const handleExportCSV = () => {
     const headers = ['Mueble / Grupo', 'Nombre', `Largo (${unit})`, `Ancho (${unit})`, 'Cantidad', 'Girar 90°', 'L1', 'L2', 'A1', 'A2'];
-    const rows = pieces.map((p) => [
-      `"${p.furnitureGroup || 'General'}"`,
-      `"${p.name}"`,
+    const rows: CsvCell[][] = pieces.map((p) => [
+      p.furnitureGroup || 'General',
+      p.name,
       p.length,
       p.width,
       p.quantity,
       p.allowRotation ? 'Sí' : 'No',
-      p.edgeBanding?.top ? '1' : '0',
-      p.edgeBanding?.bottom ? '1' : '0',
-      p.edgeBanding?.left ? '1' : '0',
-      p.edgeBanding?.right ? '1' : '0',
+      p.edgeBanding?.top ? 1 : 0,
+      p.edgeBanding?.bottom ? 1 : 0,
+      p.edgeBanding?.left ? 1 : 0,
+      p.edgeBanding?.right ? 1 : 0,
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.setAttribute('href', csvDataUri(buildCsv([headers, ...rows])));
     link.setAttribute('download', `Despiece_Muebles_${Date.now()}.csv`);
     document.body.appendChild(link);
     link.click();
