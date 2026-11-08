@@ -23,11 +23,13 @@ export function pieceSizes(piece: PlacedPiece): PieceSizes {
   };
 }
 
-const normalizeSizeText = (text: string) => text.toLowerCase().replace(/×/g, 'x').replace(/\s+/g, '');
+const normalizeSizeText = (text: string) =>
+  text.toLowerCase().replace(/×/g, 'x').replace(/,/g, '.').replace(/\s+/g, '');
 
 /**
  * Whether a search term matches the sizes shown for the piece: the cut size
- * (length × width, rotation undone) or the finished size. Accepts "×", "x", "X" and spaces.
+ * (length × width, rotation undone) or the finished size. Accepts "×", "x", "X", spaces
+ * and a comma as decimal separator. A blank term matches every piece.
  */
 export function matchesSizeSearch(piece: PlacedPiece, term: string): boolean {
   const needle = normalizeSizeText(term);

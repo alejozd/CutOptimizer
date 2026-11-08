@@ -80,6 +80,16 @@ describe('matchesSizeSearch', () => {
     expect(matchesSizeSearch(rotatedBanded, '600 X 400')).toBe(true);
   });
 
+  it('accepts a comma as decimal separator', () => {
+    expect(matchesSizeSearch(rotatedBanded, '596x396,5')).toBe(true);
+    expect(matchesSizeSearch(rotatedBanded, '396,5')).toBe(true);
+  });
+
+  it('treats a blank search like an empty one, matching every piece', () => {
+    expect(matchesSizeSearch(rotatedBanded, '')).toBe(true);
+    expect(matchesSizeSearch(rotatedBanded, '   ')).toBe(true);
+  });
+
   it('matches partial input while typing', () => {
     expect(matchesSizeSearch(rotatedBanded, '596')).toBe(true);
     expect(matchesSizeSearch(rotatedBanded, '777')).toBe(false);
