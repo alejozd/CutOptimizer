@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { OptimizationResult, Unit } from '../types';
 import { formatArea } from '../utils/optimizer';
+import { CsvCell, buildCsv, csvDataUri } from '../utils/csv';
+import { matchesSizeSearch, pieceSizes } from '../utils/pieceSizes';
+import { PieceSizeLabel } from './PieceSizeLabel';
 import { 
   ClipboardList, 
   Search, 
@@ -40,32 +43,35 @@ export const PiecesReportTable: React.FC<PiecesReportTableProps> = ({
     const matchSearch =
       piece.pieceName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (piece.furnitureGroup || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      `${Math.round(piece.width)}x${Math.round(piece.height)}`.includes(searchTerm);
+      matchesSizeSearch(piece, searchTerm);
     const matchSheet = filterSheet === 'all' || sheetIndex === filterSheet;
     return matchSearch && matchSheet;
   });
 
   // Export CSV
   const handleExportCSV = () => {
-    const headers = ['Mueble / Grupo', 'Pieza', 'Largo Final', 'Ancho Final', 'Lámina', 'Girada', 'Tapacanto L1', 'Tapacanto L2', 'Tapacanto A1', 'Tapacanto A2', 'Área'];
-    const rows = allPlacedWithSheet.map(({ piece, sheetIndex }) => [
-      `"${piece.furnitureGroup || 'General'}"`,
-      `"${piece.pieceName}"`,
-      Math.round(piece.width),
-      Math.round(piece.height),
+    const headers = ['Mueble / Grupo', 'Pieza', 'Largo Corte', 'Ancho Corte', 'Largo Terminado', 'Ancho Terminado', 'Lámina', 'Girada', 'Tapacanto L1', 'Tapacanto L2', 'Tapacanto A1', 'Tapacanto A2', 'Área'];
+    const rows: CsvCell[][] = allPlacedWithSheet.map(({ piece, sheetIndex }) => {
+      const sizes = pieceSizes(piece);
+      return [
+      piece.furnitureGroup || 'General',
+      piece.pieceName,
+      Number(sizes.cutLength.toFixed(2)),
+      Number(sizes.cutWidth.toFixed(2)),
+      Number(sizes.finishedLength.toFixed(2)),
+      Number(sizes.finishedWidth.toFixed(2)),
       sheetIndex + 1,
       piece.rotated ? 'Sí' : 'No',
       piece.edgeBanding?.top ? 'Sí' : 'No',
       piece.edgeBanding?.bottom ? 'Sí' : 'No',
       piece.edgeBanding?.left ? 'Sí' : 'No',
       piece.edgeBanding?.right ? 'Sí' : 'No',
-      (piece.width * piece.height).toFixed(0),
-    ]);
+      Math.round(piece.width * piece.height),
+      ];
+    });
 
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.setAttribute('href', csvDataUri(buildCsv([headers, ...rows])));
     link.setAttribute('download', `Lista_Piezas_Corte_${Date.now()}.csv`);
     document.body.appendChild(link);
     link.click();
@@ -135,7 +141,7 @@ export const PiecesReportTable: React.FC<PiecesReportTableProps> = ({
             <tr>
               <th className="py-2 px-3">Mueble</th>
               <th className="py-2 px-3">Pieza</th>
-              <th className="py-2 px-2">Medida Final ({unit})</th>
+              <th className="py-2 px-2">Medida de Corte L × A ({unit})</th>
               <th className="py-2 px-2 text-center">Lámina</th>
               <th className="py-2 px-2 text-center">Orientación</th>
               <th className="py-2 px-2 text-center">Tapacantos (L1, L2, A1, A2)</th>
@@ -178,7 +184,7 @@ export const PiecesReportTable: React.FC<PiecesReportTableProps> = ({
 
                     {/* Dimensions */}
                     <td className="py-2 px-2 font-mono font-medium text-stone-800">
-                      {Math.round(piece.width)} × {Math.round(piece.height)} {unit}
+                      <PieceSizeLabel sizes={pieceSizes(piece)} unit={unit} />
                     </td>
 
                     {/* Sheet badge */}

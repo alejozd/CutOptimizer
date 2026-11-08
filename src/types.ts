@@ -5,7 +5,6 @@ export interface EdgeBanding {
   bottom: boolean;  // L2 (Largo 2)
   left: boolean;    // A1 (Ancho 1)
   right: boolean;   // A2 (Ancho 2)
-  thickness?: number; // Espesor del tapacanto en mm (ej. 0.4mm, 1mm, 2mm)
 }
 
 export interface PieceInput {
@@ -14,10 +13,10 @@ export interface PieceInput {
   length: number; // Largo
   width: number;  // Ancho
   quantity: number;
-  allowRotation: boolean; // Permitir girar 90°
+  /** May rotate 90°. When false, the piece length follows the sheet grain (or sheet length if none). */
+  allowRotation: boolean;
   color: string;
   edgeBanding: EdgeBanding;
-  grainDirection?: 'horizontal' | 'vertical' | 'none'; // Sentido de veta
   furnitureGroup?: string; // Nombre del mueble o grupo (ej. "Estante", "Mesita de Noche")
 }
 
@@ -27,6 +26,8 @@ export interface SheetConfig {
   width: number;  // Ancho de la lámina
   kerf: number;   // Espesor de la sierra / disco de corte (ej. 3mm o 4mm)
   trimMargin: number; // Refilado / recorte perimetral de bordes (ej. 10mm)
+  /** Edge banding thickness in the sheet unit; discounted from the cut size on each banded side */
+  edgeBandingThickness?: number;
   grainDirection: 'horizontal' | 'vertical' | 'none';
   pricePerSheet?: number;
   unit: Unit;
@@ -57,6 +58,8 @@ export interface CutLine {
   orientation: 'horizontal' | 'vertical';
   stage: number;
   position: number;
+  /** Perimeter trim cut (refilado), made before any interior cut */
+  isTrim?: boolean;
   description: string;
 }
 
@@ -66,7 +69,7 @@ export interface WasteArea {
   y: number;
   width: number;
   height: number;
-  isUsableOffcut: boolean; // Si es un retal reutilizable (ej. mayor a 200x200mm)
+  isUsableOffcut: boolean; // Reusable offcut: short side >= 100 mm and area >= 150×150 mm
 }
 
 export interface SheetLayout {
@@ -83,12 +86,25 @@ export interface SheetLayout {
   cutsLength: number;
 }
 
+/**
+ * too_large: does not fit an empty sheet in any allowed orientation.
+ * sheet_limit: fits, but the optimizer stopped at its maximum number of sheets.
+ * invalid_size: edge banding thickness leaves no material to cut.
+ */
+export type UnplacedReason = 'too_large' | 'sheet_limit' | 'invalid_size';
+
+export interface UnplacedPiece {
+  piece: PieceInput;
+  remainingQty: number;
+  reason: UnplacedReason;
+}
+
 export interface OptimizationResult {
   sheets: SheetLayout[];
   totalSheetsNeeded: number;
   totalPiecesPlaced: number;
   totalPiecesRequested: number;
-  unplacedPieces: { piece: PieceInput; remainingQty: number }[];
+  unplacedPieces: UnplacedPiece[];
   overallEfficiency: number;
   totalUsedArea: number;
   totalWasteArea: number;

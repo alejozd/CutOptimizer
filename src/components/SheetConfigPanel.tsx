@@ -222,6 +222,38 @@ export const SheetConfigPanel: React.FC<SheetConfigPanelProps> = ({
             </div>
           </div>
 
+          {/* Espesor de tapacanto: se descuenta de la medida de corte en cada lado con canto */}
+          <div>
+            <label
+              htmlFor="sheet-edge-thickness-input"
+              className="block text-xs font-medium text-stone-700 mb-1 flex items-center gap-1"
+              title="Las medidas de las piezas son las del mueble terminado. Este espesor se resta de la medida de corte en cada lado con tapacanto (L1, L2, A1, A2)."
+            >
+              <Crop className="w-3.5 h-3.5 text-amber-600" />
+              Espesor de Tapacanto
+            </label>
+            <div className="relative">
+              <input
+                id="sheet-edge-thickness-input"
+                type="number"
+                min="0"
+                step="any"
+                value={config.edgeBandingThickness ?? 0}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value.replace(',', '.'));
+                  onChange({ edgeBandingThickness: Math.max(0, isNaN(val) ? 0 : val) });
+                }}
+                className="w-full bg-white border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs text-stone-900 font-mono focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
+              />
+              <span className="absolute right-2.5 top-2 text-[11px] text-stone-400 font-mono pointer-events-none">
+                {unit}
+              </span>
+            </div>
+            <p className="text-[10px] text-stone-500 mt-1">
+              Se descuenta de la medida de corte en cada lado con canto. 0 = no descontar.
+            </p>
+          </div>
+
           {/* Sentido de Veta general */}
           <div>
             <label
@@ -241,7 +273,7 @@ export const SheetConfigPanel: React.FC<SheetConfigPanelProps> = ({
               }
               className="w-full bg-white border border-stone-300 rounded-lg px-2 py-1.5 text-xs text-stone-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all cursor-pointer"
             >
-              <option value="none">Sin veta (Giro libre 90°)</option>
+              <option value="none">Sin veta</option>
               <option value="horizontal">Veta Longitudinal (Largo)</option>
               <option value="vertical">Veta Transversal (Ancho)</option>
             </select>
