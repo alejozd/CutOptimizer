@@ -30,7 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
   efficiency,
 }) => {
   return (
-    <header id="app-header" className="bg-stone-900 text-stone-100 border-b border-stone-800 sticky top-0 z-30 shadow-md">
+    <header id="app-header" className="bg-stone-900 text-stone-100 border-b border-stone-800 shadow-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-col md:flex-row items-center justify-between gap-4">
         {/* Brand & Logo */}
         <div className="flex items-center gap-3">
