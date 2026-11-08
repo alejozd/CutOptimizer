@@ -2,6 +2,7 @@ import React from 'react';
 import { OptimizationResult, Unit } from '../types';
 import { formatArea, formatLinear } from '../utils/optimizer';
 import { pieceSizes } from '../utils/pieceSizes';
+import { cutLineDash } from '../utils/cutStages';
 import { PieceSizeLabel } from './PieceSizeLabel';
 import { 
   Printer, 
@@ -200,7 +201,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                       y2={c.y2}
                       stroke="#dc2626"
                       strokeWidth="1.5"
-                      strokeDasharray={c.stage === 1 ? 'none' : '3 3'}
+                      strokeDasharray={{ solid: 'none', dashed: '3 3', dotted: '1 2' }[cutLineDash(c, sheet.cutLines)]}
                     />
                   ))}
                 </svg>

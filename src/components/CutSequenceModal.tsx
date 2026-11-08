@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { SheetLayout, Unit } from '../types';
+import { CutLine, SheetLayout, Unit } from '../types';
 import { formatLinear } from '../utils/optimizer';
 import { pieceSizes } from '../utils/pieceSizes';
+import { firstInteriorStage } from '../utils/cutStages';
 import { PieceSizeLabel } from './PieceSizeLabel';
 import { 
   Scissors, 
@@ -14,9 +15,12 @@ import {
   Printer
 } from 'lucide-react';
 
-function stageTitle(stage: number, hasTrim: boolean): string {
-  if (stage > 1) return 'Cortes sobre los paneles de la fase anterior';
-  return hasTrim ? 'Cortes sobre el tablero ya refilado' : 'Cortes sobre la lámina completa';
+function stageTitle(cuts: CutLine[], isFirstInteriorStage: boolean, sheetHasTrim: boolean): string {
+  if (cuts.every((c) => c.isTrim)) {
+    return cuts[0].orientation === 'horizontal' ? 'Refilado de los cantos largos' : 'Refilado de los cantos cortos';
+  }
+  if (!isFirstInteriorStage) return 'Cortes sobre los paneles de la fase anterior';
+  return sheetHasTrim ? 'Cortes sobre el tablero ya refilado' : 'Cortes sobre la lámina completa';
 }
 
 interface CutSequenceModalProps {
@@ -51,6 +55,8 @@ export const CutSequenceModal: React.FC<CutSequenceModalProps> = ({
     stages.set(cut.stage, group);
   }
   const stageGroups = [...stages.entries()].sort(([a], [b]) => a - b);
+  const sheetHasTrim = currentSheet.cutLines.some((c) => c.isTrim);
+  const interiorStart = firstInteriorStage(currentSheet.cutLines);
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
@@ -108,9 +114,9 @@ export const CutSequenceModal: React.FC<CutSequenceModalProps> = ({
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2.5 text-xs text-amber-900">
               <HelpCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
               <div>
-                <strong className="font-semibold">Paso Inicial: Refilado de Tablero</strong>
+                <strong className="font-semibold">Refilado de Tablero (fases 1 y 2)</strong>
                 <p className="mt-0.5 text-amber-800">
-                  Recorta {currentSheet.sheetConfig.trimMargin} {unit} en los 4 bordes del tablero ({currentSheet.sheetConfig.length} × {currentSheet.sheetConfig.width} {unit}) para eliminar cantos astillados de fábrica antes de comenzar los cortes interiores.
+                  Las dos primeras fases sanean {currentSheet.sheetConfig.trimMargin} {unit} en los 4 bordes del tablero ({currentSheet.sheetConfig.length} × {currentSheet.sheetConfig.width} {unit}) para eliminar cantos astillados de fábrica antes de los cortes interiores.
                 </p>
               </div>
             </div>
@@ -133,7 +139,7 @@ export const CutSequenceModal: React.FC<CutSequenceModalProps> = ({
                   {stage}
                 </span>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-stone-900">
-                  Fase {stage}: {stageTitle(stage, currentSheet.sheetConfig.trimMargin > 0)} ({cuts.length} cortes)
+                  Fase {stage}: {stageTitle(cuts, stage === interiorStart, sheetHasTrim)} ({cuts.length} cortes)
                 </h4>
               </div>
 

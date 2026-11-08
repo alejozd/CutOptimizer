@@ -64,6 +64,51 @@ function blockingCuts(layout: SheetLayout): string[] {
   return layout.cutLines.map((c) => findBlockingEndpoint(c, layout)).filter((m): m is string => m !== null);
 }
 
+describe('optimizeCuts — trim cuts', () => {
+  const lengthOf = (c: CutLine) => Math.abs(c.x2 - c.x1) + Math.abs(c.y2 - c.y1);
+
+  it('starts the sequence with the long-edge trims, then the short-edge trims', () => {
+    const result = optimizeCuts([piece('a', 600, 400)], sheet({ trimMargin: 10 }), 'guillotine_vertical');
+    const trims = result.sheets[0].cutLines.filter((c) => c.isTrim);
+
+    expect(trims).toHaveLength(4);
+    expect(trims.filter((c) => c.stage === 1)).toEqual([
+      expect.objectContaining({ orientation: 'horizontal', position: 10, x1: 0, x2: 2440 }),
+      expect.objectContaining({ orientation: 'horizontal', position: 1210, x1: 0, x2: 2440 }),
+    ]);
+    expect(trims.filter((c) => c.stage === 2)).toEqual([
+      expect.objectContaining({ orientation: 'vertical', position: 10, y1: 10, y2: 1210 }),
+      expect.objectContaining({ orientation: 'vertical', position: 2430, y1: 10, y2: 1210 }),
+    ]);
+  });
+
+  it('runs every interior cut after the trims', () => {
+    const result = optimizeCuts(
+      [piece('a', 600, 400, 3, true), piece('b', 300, 200, 4, true)],
+      sheet({ trimMargin: 10 })
+    );
+    for (const layout of result.sheets) {
+      const interior = layout.cutLines.filter((c) => !c.isTrim);
+      expect(interior.length).toBeGreaterThan(0);
+      expect(interior.every((c) => c.stage >= 3)).toBe(true);
+    }
+  });
+
+  it('counts each cut once in the total cut length', () => {
+    const result = optimizeCuts([piece('a', 600, 400)], sheet({ trimMargin: 10 }));
+    const layout = result.sheets[0];
+
+    expect(layout.cutsLength).toBeCloseTo(layout.cutLines.reduce((sum, c) => sum + lengthOf(c), 0));
+  });
+
+  it('adds no trim cuts when there is no trim margin', () => {
+    const result = optimizeCuts([piece('a', 600, 400)], sheet({ trimMargin: 0 }));
+
+    expect(result.sheets[0].cutLines.some((c) => c.isTrim)).toBe(false);
+    expect(Math.min(...result.sheets[0].cutLines.map((c) => c.stage))).toBe(1);
+  });
+});
+
 describe('optimizeCuts — edge banding thickness', () => {
   const banded = (edges: Partial<PieceInput['edgeBanding']>, length = 600, width = 400): PieceInput => ({
     ...piece('p', length, width),

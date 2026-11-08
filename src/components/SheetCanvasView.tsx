@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PlacedPiece, SheetLayout, Unit, WasteArea } from '../types';
 import { formatArea, formatLinear } from '../utils/optimizer';
+import { cutLineDash } from '../utils/cutStages';
 import { 
   ZoomIn, 
   ZoomOut, 
@@ -518,7 +519,7 @@ export const SheetCanvasView: React.FC<SheetCanvasViewProps> = ({
                       y2={cut.y2}
                       stroke="#dc2626"
                       strokeWidth="1.8"
-                      strokeDasharray={cut.stage === 1 ? 'none' : '4 3'}
+                      strokeDasharray={{ solid: 'none', dashed: '4 3', dotted: '1 3' }[cutLineDash(cut, cutLines)]}
                       opacity="0.85"
                     />
                     {/* Small cut indicator label */}

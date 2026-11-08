@@ -151,14 +151,28 @@ class SheetPacker {
     this.usableH = Math.max(0, sheetConfig.width - 2 * margin);
 
     if (this.usableW > 0 && this.usableH > 0) {
+      const trimStages = margin > 0 ? this.pushTrimCuts(margin) : 0;
       this.freeRects.push({
         x: this.usableX,
         y: this.usableY,
         width: this.usableW,
         height: this.usableH,
-        depth: 0,
+        depth: trimStages,
       });
     }
+  }
+
+  /**
+   * Trimming takes two stages: first both long edges across the full sheet, then both short
+   * edges across the strip left between them. Returns the number of stages used.
+   */
+  private pushTrimCuts(margin: number): number {
+    const { length, width } = this.sheetConfig;
+    this.pushCut('horizontal', margin, 0, length, 1, true);
+    this.pushCut('horizontal', width - margin, 0, length, 1, true);
+    this.pushCut('vertical', margin, margin, width - margin, 2, true);
+    this.pushCut('vertical', length - margin, margin, width - margin, 2, true);
+    return 2;
   }
 
   /**
@@ -332,10 +346,11 @@ class SheetPacker {
     position: number,
     from: number,
     to: number,
-    stage: number
+    stage: number,
+    isTrim = false
   ) {
     const isVertical = orientation === 'vertical';
-    const label = isVertical ? 'Corte vertical' : 'Corte horizontal';
+    const label = `${isTrim ? 'Refilado: corte' : 'Corte'} ${isVertical ? 'vertical' : 'horizontal'}`;
     this.cutLines.push({
       id: `cut-${this.cutCounter++}`,
       x1: isVertical ? position : from,
@@ -345,6 +360,7 @@ class SheetPacker {
       orientation,
       stage,
       position,
+      ...(isTrim && { isTrim: true }),
       description: `${label} a ${Math.round(position)} ${this.sheetConfig.unit} (tramo ${Math.round(from)}–${Math.round(to)})`,
     });
   }
@@ -384,11 +400,8 @@ class SheetPacker {
     }
 
     // Calculate total cut length in the current unit
+    // Trim cuts are part of cutLines, so each cut is counted exactly once
     let cutsLength = 0;
-    // Add trim cuts if applicable
-    if (this.sheetConfig.trimMargin > 0) {
-      cutsLength += 2 * (this.sheetConfig.length + this.sheetConfig.width);
-    }
     for (const c of this.cutLines) {
       const len = Math.sqrt(Math.pow(c.x2 - c.x1, 2) + Math.pow(c.y2 - c.y1, 2));
       cutsLength += len;

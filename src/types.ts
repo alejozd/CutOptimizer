@@ -56,6 +56,8 @@ export interface CutLine {
   orientation: 'horizontal' | 'vertical';
   stage: number;
   position: number;
+  /** Perimeter trim cut (refilado), made before any interior cut */
+  isTrim?: boolean;
   description: string;
 }
 
