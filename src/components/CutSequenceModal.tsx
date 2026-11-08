@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { SheetLayout, Unit } from '../types';
 import { formatLinear } from '../utils/optimizer';
+import { pieceSizes } from '../utils/pieceSizes';
+import { PieceSizeLabel } from './PieceSizeLabel';
 import { 
   Scissors, 
   X, 
@@ -177,7 +179,7 @@ export const CutSequenceModal: React.FC<CutSequenceModalProps> = ({
                     <span className="font-semibold text-stone-900">{piece.pieceName}</span>
                   </div>
                   <span className="font-mono text-stone-700 font-medium">
-                    {Number(piece.width.toFixed(2))} × {Number(piece.height.toFixed(2))} {unit}
+                    Corte: <PieceSizeLabel sizes={pieceSizes(piece)} unit={unit} />
                   </span>
                 </div>
               ))}

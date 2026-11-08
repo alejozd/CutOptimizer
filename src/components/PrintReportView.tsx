@@ -1,6 +1,8 @@
 import React from 'react';
 import { OptimizationResult, Unit } from '../types';
 import { formatArea, formatLinear } from '../utils/optimizer';
+import { pieceSizes } from '../utils/pieceSizes';
+import { PieceSizeLabel } from './PieceSizeLabel';
 import { 
   Printer, 
   X, 
@@ -210,7 +212,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                   <tr className="border-b border-stone-200 text-stone-500 font-semibold uppercase">
                     <th className="py-1 px-2 w-8">Listo</th>
                     <th className="py-1 px-2">Pieza</th>
-                    <th className="py-1 px-2">Medida Final ({unit})</th>
+                    <th className="py-1 px-2">Medida de Corte L × A ({unit})</th>
                     <th className="py-1 px-2">Giro</th>
                     <th className="py-1 px-2">Tapacantos</th>
                   </tr>
@@ -225,7 +227,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                         </td>
                         <td className="py-1 px-2 font-medium">{p.pieceName}</td>
                         <td className="py-1 px-2 font-mono">
-                          {Number(p.width.toFixed(2))} × {Number(p.height.toFixed(2))} {unit}
+                          <PieceSizeLabel sizes={pieceSizes(p)} unit={unit} />
                         </td>
                         <td className="py-1 px-2">{p.rotated ? '90°' : '—'}</td>
                         <td className="py-1 px-2 font-mono text-[10px]">

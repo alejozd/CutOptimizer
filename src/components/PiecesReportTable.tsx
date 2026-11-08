@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { OptimizationResult, Unit } from '../types';
 import { formatArea } from '../utils/optimizer';
+import { pieceSizes } from '../utils/pieceSizes';
+import { PieceSizeLabel } from './PieceSizeLabel';
 import { 
   ClipboardList, 
   Search, 
@@ -50,11 +52,15 @@ export const PiecesReportTable: React.FC<PiecesReportTableProps> = ({
 
   // Export CSV
   const handleExportCSV = () => {
-    const headers = ['Pieza', 'Largo Final', 'Ancho Final', 'Lámina', 'Girada', 'Tapacanto L1', 'Tapacanto L2', 'Tapacanto A1', 'Tapacanto A2', 'Área'];
-    const rows = allPlacedWithSheet.map(({ piece, sheetIndex }) => [
+    const headers = ['Pieza', 'Largo Corte', 'Ancho Corte', 'Largo Terminado', 'Ancho Terminado', 'Lámina', 'Girada', 'Tapacanto L1', 'Tapacanto L2', 'Tapacanto A1', 'Tapacanto A2', 'Área'];
+    const rows = allPlacedWithSheet.map(({ piece, sheetIndex }) => {
+      const sizes = pieceSizes(piece);
+      return [
       `"${piece.pieceName}"`,
-      Math.round(piece.width),
-      Math.round(piece.height),
+      Number(sizes.cutLength.toFixed(2)),
+      Number(sizes.cutWidth.toFixed(2)),
+      Number(sizes.finishedLength.toFixed(2)),
+      Number(sizes.finishedWidth.toFixed(2)),
       sheetIndex + 1,
       piece.rotated ? 'Sí' : 'No',
       piece.edgeBanding?.top ? 'Sí' : 'No',
@@ -62,7 +68,8 @@ export const PiecesReportTable: React.FC<PiecesReportTableProps> = ({
       piece.edgeBanding?.left ? 'Sí' : 'No',
       piece.edgeBanding?.right ? 'Sí' : 'No',
       (piece.width * piece.height).toFixed(0),
-    ]);
+      ];
+    });
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
@@ -136,7 +143,7 @@ export const PiecesReportTable: React.FC<PiecesReportTableProps> = ({
           <thead className="bg-stone-100/80 text-stone-600 uppercase text-[10px] font-semibold tracking-wider sticky top-0 border-b border-stone-200 z-10">
             <tr>
               <th className="py-2 px-3">Pieza</th>
-              <th className="py-2 px-2">Medida Final ({unit})</th>
+              <th className="py-2 px-2">Medida de Corte L × A ({unit})</th>
               <th className="py-2 px-2 text-center">Lámina</th>
               <th className="py-2 px-2 text-center">Orientación</th>
               <th className="py-2 px-2 text-center">Tapacantos (L1, L2, A1, A2)</th>
@@ -172,7 +179,7 @@ export const PiecesReportTable: React.FC<PiecesReportTableProps> = ({
 
                     {/* Dimensions */}
                     <td className="py-2 px-2 font-mono font-medium text-stone-800">
-                      {Math.round(piece.width)} × {Math.round(piece.height)} {unit}
+                      <PieceSizeLabel sizes={pieceSizes(piece)} unit={unit} />
                     </td>
 
                     {/* Sheet badge */}
