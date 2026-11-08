@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { OptimizationResult, Unit } from '../types';
 import { formatArea } from '../utils/optimizer';
-import { pieceSizes } from '../utils/pieceSizes';
+import { matchesSizeSearch, pieceSizes } from '../utils/pieceSizes';
 import { PieceSizeLabel } from './PieceSizeLabel';
 import { 
   ClipboardList, 
@@ -45,7 +45,7 @@ export const PiecesReportTable: React.FC<PiecesReportTableProps> = ({
   const filtered = allPlacedWithSheet.filter(({ piece, sheetIndex }) => {
     const matchSearch =
       piece.pieceName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      `${Math.round(piece.width)}x${Math.round(piece.height)}`.includes(searchTerm);
+      matchesSizeSearch(piece, searchTerm);
     const matchSheet = filterSheet === 'all' || sheetIndex === filterSheet;
     return matchSearch && matchSheet;
   });

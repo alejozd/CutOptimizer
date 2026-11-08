@@ -23,6 +23,20 @@ export function pieceSizes(piece: PlacedPiece): PieceSizes {
   };
 }
 
+const normalizeSizeText = (text: string) => text.toLowerCase().replace(/×/g, 'x').replace(/\s+/g, '');
+
+/**
+ * Whether a search term matches the sizes shown for the piece: the cut size
+ * (length × width, rotation undone) or the finished size. Accepts "×", "x", "X" and spaces.
+ */
+export function matchesSizeSearch(piece: PlacedPiece, term: string): boolean {
+  const needle = normalizeSizeText(term);
+  const s = pieceSizes(piece);
+  return [formatSizePair(s.cutLength, s.cutWidth), formatSizePair(s.finishedLength, s.finishedWidth)].some(
+    (label) => normalizeSizeText(label).includes(needle)
+  );
+}
+
 /** Formats a size pair with up to two decimals, e.g. "596 × 396.5" */
 export function formatSizePair(length: number, width: number): string {
   return `${Number(length.toFixed(2))} × ${Number(width.toFixed(2))}`;
