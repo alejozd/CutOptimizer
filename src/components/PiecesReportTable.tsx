@@ -6,11 +6,7 @@ import { PieceSizeLabel } from './PieceSizeLabel';
 import { 
   ClipboardList, 
   Search, 
-  Layers, 
-  RotateCw, 
-  Check, 
   Download,
-  Filter
 } from 'lucide-react';
 
 interface PiecesReportTableProps {
@@ -45,6 +41,7 @@ export const PiecesReportTable: React.FC<PiecesReportTableProps> = ({
   const filtered = allPlacedWithSheet.filter(({ piece, sheetIndex }) => {
     const matchSearch =
       piece.pieceName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (piece.furnitureGroup || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       matchesSizeSearch(piece, searchTerm);
     const matchSheet = filterSheet === 'all' || sheetIndex === filterSheet;
     return matchSearch && matchSheet;
@@ -52,10 +49,11 @@ export const PiecesReportTable: React.FC<PiecesReportTableProps> = ({
 
   // Export CSV
   const handleExportCSV = () => {
-    const headers = ['Pieza', 'Largo Corte', 'Ancho Corte', 'Largo Terminado', 'Ancho Terminado', 'Lámina', 'Girada', 'Tapacanto L1', 'Tapacanto L2', 'Tapacanto A1', 'Tapacanto A2', 'Área'];
+    const headers = ['Mueble / Grupo', 'Pieza', 'Largo Corte', 'Ancho Corte', 'Largo Terminado', 'Ancho Terminado', 'Lámina', 'Girada', 'Tapacanto L1', 'Tapacanto L2', 'Tapacanto A1', 'Tapacanto A2', 'Área'];
     const rows = allPlacedWithSheet.map(({ piece, sheetIndex }) => {
       const sizes = pieceSizes(piece);
       return [
+      `"${piece.furnitureGroup || 'General'}"`,
       `"${piece.pieceName}"`,
       Number(sizes.cutLength.toFixed(2)),
       Number(sizes.cutWidth.toFixed(2)),
@@ -71,7 +69,7 @@ export const PiecesReportTable: React.FC<PiecesReportTableProps> = ({
       ];
     });
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
@@ -99,7 +97,7 @@ export const PiecesReportTable: React.FC<PiecesReportTableProps> = ({
             <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-2 pointer-events-none" />
             <input
               type="text"
-              placeholder="Buscar pieza..."
+              placeholder="Buscar pieza o mueble..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="bg-white border border-stone-300 rounded-lg pl-8 pr-2.5 py-1 text-xs text-stone-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 w-36 sm:w-48"
@@ -142,6 +140,7 @@ export const PiecesReportTable: React.FC<PiecesReportTableProps> = ({
         <table className="w-full text-left text-xs border-collapse">
           <thead className="bg-stone-100/80 text-stone-600 uppercase text-[10px] font-semibold tracking-wider sticky top-0 border-b border-stone-200 z-10">
             <tr>
+              <th className="py-2 px-3">Mueble</th>
               <th className="py-2 px-3">Pieza</th>
               <th className="py-2 px-2">Medida de Corte L × A ({unit})</th>
               <th className="py-2 px-2 text-center">Lámina</th>
@@ -153,7 +152,7 @@ export const PiecesReportTable: React.FC<PiecesReportTableProps> = ({
           <tbody className="divide-y divide-stone-100">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-8 text-center text-stone-400">
+                <td colSpan={7} className="py-8 text-center text-stone-400">
                   No se encontraron piezas con el filtro actual.
                 </td>
               </tr>
@@ -166,6 +165,13 @@ export const PiecesReportTable: React.FC<PiecesReportTableProps> = ({
                     className="hover:bg-amber-50/40 transition-colors cursor-pointer"
                     onClick={() => onSelectSheet && onSelectSheet(sheetIndex)}
                   >
+                    {/* Furniture Group */}
+                    <td className="py-2 px-3">
+                      <span className="bg-amber-50 text-amber-900 border border-amber-200/80 px-2 py-0.5 rounded text-[10px] font-semibold">
+                        {piece.furnitureGroup || 'General'}
+                      </span>
+                    </td>
+
                     {/* Name + Color */}
                     <td className="py-2 px-3">
                       <div className="flex items-center gap-2">

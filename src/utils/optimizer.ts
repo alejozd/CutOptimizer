@@ -24,6 +24,7 @@ interface InternalPiece {
   instanceIndex: number;
   pieceId: string;
   name: string;
+  furnitureGroup?: string;
   /** Cut size: finished size minus edge banding thickness on banded sides */
   length: number;
   width: number;
@@ -112,6 +113,7 @@ function expandPieces(pieces: PieceInput[], sheetConfig: SheetConfig): InternalP
         instanceIndex: counter++,
         pieceId: p.id,
         name: p.name,
+        furnitureGroup: p.furnitureGroup,
         length: cut.length,
         width: cut.width,
         finishedLength: p.length,
@@ -242,6 +244,7 @@ class SheetPacker {
       id: `${piece.pieceId}-${piece.instanceIndex}`,
       pieceId: piece.pieceId,
       pieceName: piece.name,
+      furnitureGroup: piece.furnitureGroup,
       x: targetRect.x,
       y: targetRect.y,
       width: placeW,
@@ -517,9 +520,29 @@ export function optimizeCuts(
   const allPieces = expandPieces(pieces, sheetConfig);
 
   if (allPieces.length === 0) {
+    const trim = sheetConfig.trimMargin || 0;
+    const usableW = Math.max(0, sheetConfig.length - 2 * trim);
+    const usableH = Math.max(0, sheetConfig.width - 2 * trim);
+    const totalAreaINTEGER = sheetConfig.length * sheetConfig.width;
+    const usableArea = usableW * usableH;
+
+    const blankSheet: SheetLayout = {
+      sheetIndex: 0,
+      sheetConfig,
+      placedPieces: [],
+      wasteAreas: [],
+      cutLines: [],
+      usedArea: 0,
+      usableArea,
+      totalSheetArea: totalAreaINTEGER,
+      efficiencyPercentage: 0,
+      wastePercentage: 0,
+      cutsLength: 0,
+    };
+
     return {
-      sheets: [],
-      totalSheetsNeeded: 0,
+      sheets: [blankSheet],
+      totalSheetsNeeded: 1,
       totalPiecesPlaced: 0,
       totalPiecesRequested: 0,
       unplacedPieces: [],
@@ -528,9 +551,9 @@ export function optimizeCuts(
       totalWasteArea: 0,
       totalLinearCut: 0,
       totalEdgeBandingLength: 0,
-      estimatedCost: 0,
+      estimatedCost: sheetConfig.pricePerSheet || 0,
       calculationTimeMs: 0,
-      algorithmUsed: 'Ninguna pieza seleccionada',
+      algorithmUsed: 'Lámina vacía (sin piezas)',
     };
   }
 

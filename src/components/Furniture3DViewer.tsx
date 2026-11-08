@@ -2,16 +2,17 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as THREE from 'three';
 import { 
   Box, 
-  Layers, 
   RotateCcw, 
-  Sparkles, 
   ZoomIn, 
   ZoomOut, 
   Eye,
   Info,
+  Layers,
+  Sparkles,
   Maximize2
 } from 'lucide-react';
 import { FurniturePreset, PieceInput, Unit } from '../types';
+import { buildFurnitureAssembly, FurnitureModule3D, Piece3DDef } from '../utils/furniture3DAssembler';
 
 interface Furniture3DViewerProps {
   preset: FurniturePreset | null;
@@ -20,11 +21,13 @@ interface Furniture3DViewerProps {
 }
 
 interface PieceMeshMeta {
+  id: string;
   name: string;
+  furnitureGroup: string;
   originalPos: THREE.Vector3;
   explodedOffset: THREE.Vector3;
-  dimensions: { w: number; h: number; d: number };
   mesh: THREE.Mesh;
+  def: Piece3DDef;
 }
 
 export const Furniture3DViewer: React.FC<Furniture3DViewerProps> = ({
@@ -42,27 +45,36 @@ export const Furniture3DViewer: React.FC<Furniture3DViewerProps> = ({
 
   // Interaction & UI State
   const [isExploded, setIsExploded] = useState<boolean>(false);
-  const [explosionAmount, setExplosionAmount] = useState<number>(0);
-  const [selectedPieceName, setSelectedPieceName] = useState<string | null>(null);
-  const [showWireframe, setShowWireframe] = useState<boolean>(false);
+  const [explosionAmount, setExplosionAmount] = useState<number>(0); // 0 to 1
+  const [selectedPieceMeta, setSelectedPieceMeta] = useState<Piece3DDef | null>(null);
   const [autoRotate, setAutoRotate] = useState<boolean>(false);
   const [woodTheme, setWoodTheme] = useState<'oak' | 'walnut' | 'white' | 'pine'>('oak');
+  const [activeModuleFilter, setActiveModuleFilter] = useState<'all' | string>('all');
+
+  // References for animation loop (prevents scene re-creation / flickering)
+  const autoRotateRef = useRef<boolean>(false);
+  autoRotateRef.current = autoRotate;
+
+  const explosionAmountRef = useRef<number>(0);
+  explosionAmountRef.current = isExploded ? (explosionAmount > 0 ? explosionAmount : 1) : 0;
 
   // Mouse drag / rotation controls
   const isDraggingRef = useRef(false);
   const mousePosRef = useRef({ x: 0, y: 0 });
   const rotationRef = useRef({ x: 0.35, y: -0.6 });
   const targetRotationRef = useRef({ x: 0.35, y: -0.6 });
-  const zoomDistRef = useRef(1600);
-  const targetZoomRef = useRef(1600);
+  const zoomDistRef = useRef(1800);
+  const targetZoomRef = useRef(1800);
+  const centerTargetRef = useRef(new THREE.Vector3(0, 400, 0));
+  const currentCenterRef = useRef(new THREE.Vector3(0, 400, 0));
 
-  // Palette color definitions
+  // Theme palette definitions
   const themeColors = useMemo(() => {
     switch (woodTheme) {
       case 'walnut':
         return { base: 0x4a2e18, accent: 0x5c3a21, door: 0x3d2413, shelf: 0x6e472b, edge: 0x2b180a };
       case 'white':
-        return { base: 0xf3f4f6, accent: 0xe5e7eb, door: 0xffffff, shelf: 0xd1d5db, edge: 0x9ca3af };
+        return { base: 0xf8fafc, accent: 0xe2e8f0, door: 0xffffff, shelf: 0xcbd5e1, edge: 0x94a3b8 };
       case 'pine':
         return { base: 0xd4a373, accent: 0xfaedcd, door: 0xe9edc9, shelf: 0xccd5ae, edge: 0xbc6c25 };
       case 'oak':
@@ -71,90 +83,48 @@ export const Furniture3DViewer: React.FC<Furniture3DViewerProps> = ({
     }
   }, [woodTheme]);
 
-  // Generate 3D piece layout depending on selected furniture preset or generic pieces
-  const pieceDefinitions = useMemo(() => {
-    const t = 18; // Standard 18mm board thickness
-    const pId = preset?.id || 'kitchen_cabinet';
-
-    if (pId === 'kitchen_cabinet') {
-      const W = 600;
-      const H = 700;
-      const D = 300;
-      const inW = W - 2 * t;
-
-      return [
-        { name: 'Lateral Izquierdo', w: t, h: H, d: D, x: -W / 2 + t / 2, y: H / 2, z: 0, ex: new THREE.Vector3(-180, 0, 0), type: 'lateral' },
-        { name: 'Lateral Derecho', w: t, h: H, d: D, x: W / 2 - t / 2, y: H / 2, z: 0, ex: new THREE.Vector3(180, 0, 0), type: 'lateral' },
-        { name: 'Base / Piso', w: inW, h: t, d: D, x: 0, y: t / 2, z: 0, ex: new THREE.Vector3(0, -120, 0), type: 'horizontal' },
-        { name: 'Techo', w: inW, h: t, d: D, x: 0, y: H - t / 2, z: 0, ex: new THREE.Vector3(0, 120, 0), type: 'horizontal' },
-        { name: 'Repisa Intermedia', w: inW, h: t, d: D - 15, x: 0, y: H / 2, z: -7.5, ex: new THREE.Vector3(0, 0, 150), type: 'shelf' },
-        { name: 'Puerta Izquierda', w: inW / 2 - 2, h: H - 4, d: t, x: -inW / 4, y: H / 2, z: D / 2 + t / 2, ex: new THREE.Vector3(-80, 0, 200), type: 'door' },
-        { name: 'Puerta Derecha', w: inW / 2 - 2, h: H - 4, d: t, x: inW / 4, y: H / 2, z: D / 2 + t / 2, ex: new THREE.Vector3(80, 0, 200), type: 'door' },
-        { name: 'Fondo (MDF 3mm)', w: W - 10, h: H - 10, d: 4, x: 0, y: H / 2, z: -D / 2 - 2, ex: new THREE.Vector3(0, 0, -160), type: 'back' },
-      ];
+  // Determine active piece collection (from active preset or current pieces list)
+  const effectivePieces = useMemo(() => {
+    if (preset && preset.pieces.length > 0 && pieces.length === 0) {
+      return preset.pieces.map((p, idx) => ({
+        ...p,
+        id: `preset-piece-${idx}`,
+        furnitureGroup: preset.name,
+      }));
     }
+    return pieces;
+  }, [preset, pieces]);
 
-    if (pId === 'shelf_unit') {
-      const W = 800;
-      const H = 1800;
-      const D = 300;
-      const inW = W - 2 * t;
+  // Parametric Assembly Computation
+  const assemblyResult = useMemo(() => {
+    const standardThickness = unit === 'cm' ? 18 : unit === 'in' ? 19.05 : 18;
+    return buildFurnitureAssembly(effectivePieces, unit, standardThickness);
+  }, [effectivePieces, unit]);
 
-      return [
-        { name: 'Lateral Izquierdo', w: t, h: H, d: D, x: -W / 2 + t / 2, y: H / 2, z: 0, ex: new THREE.Vector3(-200, 0, 0), type: 'lateral' },
-        { name: 'Lateral Derecho', w: t, h: H, d: D, x: W / 2 - t / 2, y: H / 2, z: 0, ex: new THREE.Vector3(200, 0, 0), type: 'lateral' },
-        { name: 'Base Inferior', w: inW, h: t, d: D, x: 0, y: 70 + t / 2, z: 0, ex: new THREE.Vector3(0, -100, 0), type: 'horizontal' },
-        { name: 'Zócalo Frontal', w: inW, h: 70, d: t, x: 0, y: 35, z: D / 2 - 20, ex: new THREE.Vector3(0, -120, 100), type: 'lateral' },
-        { name: 'Techo Superior', w: inW, h: t, d: D, x: 0, y: H - t / 2, z: 0, ex: new THREE.Vector3(0, 160, 0), type: 'horizontal' },
-        { name: 'Repisa Fija 1', w: inW, h: t, d: D, x: 0, y: H * 0.28, z: 0, ex: new THREE.Vector3(0, 0, 120), type: 'shelf' },
-        { name: 'Repisa Fija 2', w: inW, h: t, d: D, x: 0, y: H * 0.52, z: 0, ex: new THREE.Vector3(0, 0, 150), type: 'shelf' },
-        { name: 'Repisa Fija 3', w: inW, h: t, d: D, x: 0, y: H * 0.76, z: 0, ex: new THREE.Vector3(0, 0, 180), type: 'shelf' },
-        { name: 'Fondo Trasero', w: W - 10, h: H - 10, d: 4, x: 0, y: H / 2, z: -D / 2 - 2, ex: new THREE.Vector3(0, 0, -180), type: 'back' },
-      ];
+  // Active module details
+  const activeModule = useMemo(() => {
+    if (activeModuleFilter === 'all') return null;
+    return assemblyResult.modules.find((m) => m.name === activeModuleFilter) || null;
+  }, [assemblyResult, activeModuleFilter]);
+
+  // Update camera target when switching between modules
+  useEffect(() => {
+    if (activeModule) {
+      centerTargetRef.current = activeModule.center.clone();
+      targetZoomRef.current = activeModule.bounds.dist;
+    } else {
+      centerTargetRef.current = new THREE.Vector3(0, assemblyResult.totalBounds.height, 0);
+      targetZoomRef.current = assemblyResult.totalBounds.dist;
     }
+  }, [activeModule, assemblyResult]);
 
-    if (pId === 'tv_stand') {
-      const W = 1500;
-      const H = 500;
-      const D = 400;
-      const inW = W - 2 * t;
-
-      return [
-        { name: 'Cubierta Superior', w: W, h: t, d: D, x: 0, y: H - t / 2, z: 0, ex: new THREE.Vector3(0, 150, 0), type: 'horizontal' },
-        { name: 'Base Inferior', w: inW, h: t, d: D, x: 0, y: 60 + t / 2, z: 0, ex: new THREE.Vector3(0, -100, 0), type: 'horizontal' },
-        { name: 'Lateral Izquierdo', w: t, h: H - t - 60, d: D, x: -W / 2 + t / 2, y: (H - t + 60) / 2, z: 0, ex: new THREE.Vector3(-180, 0, 0), type: 'lateral' },
-        { name: 'Lateral Derecho', w: t, h: H - t - 60, d: D, x: W / 2 - t / 2, y: (H - t + 60) / 2, z: 0, ex: new THREE.Vector3(180, 0, 0), type: 'lateral' },
-        { name: 'Divisor Central', w: t, h: H - t - 60, d: D - 20, x: 0, y: (H - t + 60) / 2, z: -10, ex: new THREE.Vector3(0, 0, 120), type: 'lateral' },
-        { name: 'Repisa Derecha', w: inW / 2 - t / 2, h: t, d: D - 20, x: inW / 4, y: (H - t + 60) / 2, z: -10, ex: new THREE.Vector3(100, 0, 100), type: 'shelf' },
-        { name: 'Puerta Izquierda', w: inW / 2 - 4, h: H - t - 64, d: t, x: -inW / 4, y: (H - t + 60) / 2, z: D / 2 + t / 2, ex: new THREE.Vector3(-100, 0, 160), type: 'door' },
-        { name: 'Fondo', w: W - 10, h: H - 70, d: 4, x: 0, y: (H + 60) / 2, z: -D / 2 - 2, ex: new THREE.Vector3(0, 0, -150), type: 'back' },
-      ];
-    }
-
-    // Default: desk preset or generic pieces
-    const W = 1200;
-    const H = 750;
-    const D = 600;
-
-    return [
-      { name: 'Cubierta de Escritorio', w: W, h: 25, d: D, x: 0, y: H - 12.5, z: 0, ex: new THREE.Vector3(0, 160, 0), type: 'horizontal' },
-      { name: 'Lateral Izquierdo', w: t, h: H - 25, d: D - 30, x: -W / 2 + 20, y: (H - 25) / 2, z: 0, ex: new THREE.Vector3(-160, 0, 0), type: 'lateral' },
-      { name: 'Lateral Cajonera Ext.', w: t, h: H - 25, d: D - 30, x: W / 2 - 20, y: (H - 25) / 2, z: 0, ex: new THREE.Vector3(160, 0, 0), type: 'lateral' },
-      { name: 'Lateral Cajonera Int.', w: t, h: H - 25, d: D - 30, x: W / 2 - 380, y: (H - 25) / 2, z: 0, ex: new THREE.Vector3(80, 0, 0), type: 'lateral' },
-      { name: 'Faldón / Trasera', w: W - 420, h: 300, d: t, x: -180, y: H - 175, z: -D / 2 + 30, ex: new THREE.Vector3(0, 0, -150), type: 'back' },
-      { name: 'Piso Cajonera', w: 342, h: t, d: D - 30, x: W / 2 - 200, y: 50, z: 0, ex: new THREE.Vector3(100, -80, 0), type: 'shelf' },
-      { name: 'Frente Cajón 1', w: 338, h: 180, d: t, x: W / 2 - 200, y: H - 130, z: D / 2 - 10, ex: new THREE.Vector3(100, 0, 160), type: 'door' },
-      { name: 'Frente Cajón 2', w: 338, h: 180, d: t, x: W / 2 - 200, y: H - 320, z: D / 2 - 10, ex: new THREE.Vector3(100, 0, 180), type: 'door' },
-    ];
-  }, [preset]);
-
-  // Setup Three.js Scene
+  // Initial Scene Setup (Mounts Once)
   useEffect(() => {
     const container = mountRef.current;
     if (!container) return;
 
     const width = container.clientWidth || 500;
-    const height = container.clientHeight || 420;
+    const height = container.clientHeight || 440;
 
     // Scene
     const scene = new THREE.Scene();
@@ -162,7 +132,7 @@ export const Furniture3DViewer: React.FC<Furniture3DViewerProps> = ({
     sceneRef.current = scene;
 
     // Camera
-    const camera = new THREE.PerspectiveCamera(45, width / height, 10, 8000);
+    const camera = new THREE.PerspectiveCamera(45, width / height, 10, 15000);
     cameraRef.current = camera;
 
     // Renderer
@@ -176,41 +146,143 @@ export const Furniture3DViewer: React.FC<Furniture3DViewerProps> = ({
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
 
-    // Lights
+    // Studio Lighting setup
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
     scene.add(ambientLight);
 
-    const dirLight1 = new THREE.DirectionalLight(0xfffaed, 0.9);
-    dirLight1.position.set(1200, 1800, 1400);
+    const dirLight1 = new THREE.DirectionalLight(0xfff7ed, 0.9);
+    dirLight1.position.set(1500, 2500, 1800);
     dirLight1.castShadow = true;
-    dirLight1.shadow.mapSize.width = 1024;
-    dirLight1.shadow.mapSize.height = 1024;
+    dirLight1.shadow.mapSize.width = 2048;
+    dirLight1.shadow.mapSize.height = 2048;
+    dirLight1.shadow.camera.near = 100;
+    dirLight1.shadow.camera.far = 7000;
+    const d = 2500;
+    dirLight1.shadow.camera.left = -d;
+    dirLight1.shadow.camera.right = d;
+    dirLight1.shadow.camera.top = d;
+    dirLight1.shadow.camera.bottom = -d;
+    dirLight1.shadow.bias = -0.0005;
     scene.add(dirLight1);
 
-    const dirLight2 = new THREE.DirectionalLight(0x93c5fd, 0.4);
-    dirLight2.position.set(-1200, 1000, -1000);
+    const dirLight2 = new THREE.DirectionalLight(0xe0f2fe, 0.4);
+    dirLight2.position.set(-1500, 1200, -1200);
     scene.add(dirLight2);
 
-    // Subtle Ground Grid
-    const grid = new THREE.GridHelper(2400, 24, 0xd1d5db, 0xe5e7eb);
-    grid.position.y = 0;
-    scene.add(grid);
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0xe2e8f0, 0.4);
+    scene.add(hemiLight);
 
-    // Ground Shadow Plane
-    const planeGeo = new THREE.PlaneGeometry(3000, 3000);
-    const planeMat = new THREE.ShadowMaterial({ opacity: 0.12 });
-    const plane = new THREE.Mesh(planeGeo, planeMat);
-    plane.rotation.x = -Math.PI / 2;
-    plane.position.y = -1;
-    plane.receiveShadow = true;
-    scene.add(plane);
+    // Grid Floor
+    const gridHelper = new THREE.GridHelper(5000, 50, 0xd6d3d1, 0xe7e5e4);
+    gridHelper.position.y = -1;
+    scene.add(gridHelper);
 
-    // Group for furniture pieces
+    // Shadow plane
+    const planeGeo = new THREE.PlaneGeometry(5000, 5000);
+    const planeMat = new THREE.ShadowMaterial({ opacity: 0.15 });
+    const shadowPlane = new THREE.Mesh(planeGeo, planeMat);
+    shadowPlane.rotation.x = -Math.PI / 2;
+    shadowPlane.position.y = 0;
+    shadowPlane.receiveShadow = true;
+    scene.add(shadowPlane);
+
+    // Group for all pieces
     const group = new THREE.Group();
     scene.add(group);
     groupRef.current = group;
 
-    // Resize Handler
+    // Raycaster for piece click selection
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const handlePointerDown = (e: MouseEvent) => {
+      isDraggingRef.current = true;
+      mousePosRef.current = { x: e.clientX, y: e.clientY };
+    };
+
+    const handlePointerMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const dx = e.clientX - mousePosRef.current.x;
+      const dy = e.clientY - mousePosRef.current.y;
+
+      targetRotationRef.current.y += dx * 0.008;
+      targetRotationRef.current.x += dy * 0.008;
+      targetRotationRef.current.x = Math.max(-Math.PI / 3, Math.min(Math.PI / 2.2, targetRotationRef.current.x));
+
+      mousePosRef.current = { x: e.clientX, y: e.clientY };
+    };
+
+    const handlePointerUp = (e: MouseEvent) => {
+      isDraggingRef.current = false;
+      const rect = container.getBoundingClientRect();
+      const clickX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const clickY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      mouse.x = clickX;
+      mouse.y = clickY;
+      raycaster.setFromCamera(mouse, camera);
+
+      const intersects = raycaster.intersectObjects(group.children);
+      if (intersects.length > 0) {
+        const hitMesh = intersects[0].object as THREE.Mesh;
+        const hitMeta = piecesMetaRef.current.find((pm) => pm.mesh === hitMesh);
+        if (hitMeta) {
+          setSelectedPieceMeta(hitMeta.def);
+        }
+      }
+    };
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      targetZoomRef.current = Math.max(400, Math.min(8000, targetZoomRef.current + e.deltaY * 1.5));
+    };
+
+    const dom = renderer.domElement;
+    dom.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('mousemove', handlePointerMove);
+    window.addEventListener('mouseup', handlePointerUp);
+    dom.addEventListener('wheel', handleWheel, { passive: false });
+
+    // Animation Render Loop (smooth 60fps)
+    const animate = () => {
+      animFrameRef.current = requestAnimationFrame(animate);
+
+      if (autoRotateRef.current) {
+        targetRotationRef.current.y += 0.006;
+      }
+
+      // Smooth camera interpolation
+      rotationRef.current.x += (targetRotationRef.current.x - rotationRef.current.x) * 0.08;
+      rotationRef.current.y += (targetRotationRef.current.y - rotationRef.current.y) * 0.08;
+      zoomDistRef.current += (targetZoomRef.current - zoomDistRef.current) * 0.08;
+
+      currentCenterRef.current.lerp(centerTargetRef.current, 0.08);
+
+      const rx = rotationRef.current.x;
+      const ry = rotationRef.current.y;
+      const dist = zoomDistRef.current;
+
+      const cx = currentCenterRef.current.x;
+      const cy = currentCenterRef.current.y;
+      const cz = currentCenterRef.current.z;
+
+      camera.position.x = cx + dist * Math.sin(ry) * Math.cos(rx);
+      camera.position.y = cy + dist * Math.sin(rx);
+      camera.position.z = cz + dist * Math.cos(ry) * Math.cos(rx);
+      camera.lookAt(cx, cy, cz);
+
+      // Smooth Explosion Interpolation
+      const curExplosion = explosionAmountRef.current;
+      piecesMetaRef.current.forEach((pm) => {
+        const targetPos = new THREE.Vector3().copy(pm.originalPos).addScaledVector(pm.explodedOffset, curExplosion);
+        pm.mesh.position.lerp(targetPos, 0.1);
+      });
+
+      renderer.render(scene, camera);
+    };
+
+    animate();
+
     const handleResize = () => {
       if (!container || !renderer || !camera) return;
       const w = container.clientWidth;
@@ -219,177 +291,142 @@ export const Furniture3DViewer: React.FC<Furniture3DViewerProps> = ({
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
     };
+
     window.addEventListener('resize', handleResize);
 
-    // Render loop
-    const animate = () => {
-      animFrameRef.current = requestAnimationFrame(animate);
-
-      // Smooth camera interpolation
-      rotationRef.current.x += (targetRotationRef.current.x - rotationRef.current.x) * 0.1;
-      rotationRef.current.y += (targetRotationRef.current.y - rotationRef.current.y) * 0.1;
-      zoomDistRef.current += (targetZoomRef.current - zoomDistRef.current) * 0.1;
-
-      if (autoRotate) {
-        targetRotationRef.current.y += 0.005;
-      }
-
-      const rotX = rotationRef.current.x;
-      const rotY = rotationRef.current.y;
-      const dist = zoomDistRef.current;
-
-      camera.position.x = dist * Math.cos(rotX) * Math.sin(rotY);
-      camera.position.y = dist * Math.sin(rotX) + 350;
-      camera.position.z = dist * Math.cos(rotX) * Math.cos(rotY);
-      camera.lookAt(0, 350, 0);
-
-      renderer.render(scene, camera);
-    };
-    animate();
-
     return () => {
-      window.removeEventListener('resize', handleResize);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      window.removeEventListener('resize', handleResize);
+      dom.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('mousemove', handlePointerMove);
+      window.removeEventListener('mouseup', handlePointerUp);
+      dom.removeEventListener('wheel', handleWheel);
       renderer.dispose();
     };
-  }, [autoRotate]);
+  }, []);
 
-  // Update piece meshes when definitions or material theme changes
+  // Update Meshes whenever assembly definition, theme, or active filter changes
   useEffect(() => {
     const group = groupRef.current;
     if (!group) return;
 
-    // Clear old meshes
+    // Clear previous piece meshes
     while (group.children.length > 0) {
-      const obj = group.children[0];
-      group.remove(obj);
-      if (obj instanceof THREE.Mesh) {
-        obj.geometry.dispose();
-        if (Array.isArray(obj.material)) {
-          obj.material.forEach((m) => m.dispose());
-        } else {
-          obj.material.dispose();
-        }
+      const obj = group.children[0] as THREE.Mesh;
+      if (obj.geometry) obj.geometry.dispose();
+      if (Array.isArray(obj.material)) {
+        obj.material.forEach((m) => m.dispose());
+      } else if (obj.material) {
+        obj.material.dispose();
       }
+      group.remove(obj);
     }
     piecesMetaRef.current = [];
 
-    pieceDefinitions.forEach((def) => {
-      const geo = new THREE.BoxGeometry(def.w, def.h, def.d);
-      
-      let baseHex = themeColors.base;
-      if (def.type === 'door') baseHex = themeColors.door;
-      else if (def.type === 'shelf') baseHex = themeColors.shelf;
-      else if (def.type === 'horizontal') baseHex = themeColors.accent;
-      else if (def.type === 'back') baseHex = 0xf5f0eb;
+    const defsToRender =
+      activeModuleFilter === 'all'
+        ? assemblyResult.allDefs
+        : assemblyResult.allDefs.filter((d) => d.furnitureGroup === activeModuleFilter);
 
-      const isSelected = selectedPieceName === def.name;
+    defsToRender.forEach((pDef) => {
+      const geo = new THREE.BoxGeometry(pDef.w, pDef.h, pDef.d);
+
+      let matColor = themeColors.base;
+      if (pDef.type === 'lateral') matColor = themeColors.accent;
+      else if (pDef.type === 'door' || pDef.type === 'drawer') matColor = themeColors.door;
+      else if (pDef.type === 'shelf') matColor = themeColors.shelf;
+      else if (pDef.type === 'top') matColor = themeColors.accent;
+      else if (pDef.type === 'back') matColor = themeColors.edge;
 
       const mat = new THREE.MeshStandardMaterial({
-        color: isSelected ? 0xef4444 : baseHex,
-        roughness: 0.55,
+        color: matColor,
+        roughness: 0.45,
         metalness: 0.05,
-        wireframe: showWireframe,
       });
 
       const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(pDef.x, pDef.y, pDef.z);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
-      mesh.position.set(def.x, def.y, def.z);
 
-      // Add subtle edge outlines
+      // Add edge outline wireframe for clean architectural contrast
       const edges = new THREE.EdgesGeometry(geo);
-      const lineMat = new THREE.LineBasicMaterial({ color: isSelected ? 0xb91c1c : themeColors.edge, linewidth: 1 });
-      const line = new THREE.LineSegments(edges, lineMat);
-      mesh.add(line);
+      const lineMat = new THREE.LineBasicMaterial({
+        color: themeColors.edge,
+        linewidth: 1,
+        transparent: true,
+        opacity: 0.35,
+      });
+      const edgeLines = new THREE.LineSegments(edges, lineMat);
+      mesh.add(edgeLines);
 
       group.add(mesh);
 
       piecesMetaRef.current.push({
-        name: def.name,
-        originalPos: new THREE.Vector3(def.x, def.y, def.z),
-        explodedOffset: def.ex,
-        dimensions: { w: def.w, h: def.h, d: def.d },
+        id: pDef.id,
+        name: pDef.name,
+        furnitureGroup: pDef.furnitureGroup,
+        originalPos: new THREE.Vector3(pDef.x, pDef.y, pDef.z),
+        explodedOffset: pDef.ex.clone(),
         mesh,
+        def: pDef,
       });
     });
-  }, [pieceDefinitions, themeColors, showWireframe, selectedPieceName]);
+  }, [assemblyResult, themeColors, activeModuleFilter]);
 
-  // Smoothly update exploded positions
-  useEffect(() => {
-    const factor = isExploded ? 1 : explosionAmount;
-    piecesMetaRef.current.forEach((item) => {
-      const targetX = item.originalPos.x + item.explodedOffset.x * factor;
-      const targetY = item.originalPos.y + item.explodedOffset.y * factor;
-      const targetZ = item.originalPos.z + item.explodedOffset.z * factor;
-
-      item.mesh.position.set(targetX, targetY, targetZ);
-    });
-  }, [isExploded, explosionAmount]);
-
-  // Mouse / Touch Drag Handlers
-  const handleMouseDown = (e: React.MouseEvent) => {
-    isDraggingRef.current = true;
-    mousePosRef.current = { x: e.clientX, y: e.clientY };
+  const handleZoom = (delta: number) => {
+    targetZoomRef.current = Math.max(400, Math.min(8000, targetZoomRef.current + delta));
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDraggingRef.current) return;
-    const deltaX = e.clientX - mousePosRef.current.x;
-    const deltaY = e.clientY - mousePosRef.current.y;
-
-    targetRotationRef.current.y += deltaX * 0.008;
-    targetRotationRef.current.x = Math.max(
-      0.05,
-      Math.min(Math.PI / 2 - 0.05, targetRotationRef.current.x + deltaY * 0.008)
-    );
-
-    mousePosRef.current = { x: e.clientX, y: e.clientY };
-  };
-
-  const handleMouseUp = () => {
-    isDraggingRef.current = false;
-  };
-
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    targetZoomRef.current = Math.max(600, Math.min(3000, targetZoomRef.current + e.deltaY * 1.2));
-  };
-
-  const resetCamera = () => {
+  const handleResetCamera = () => {
     targetRotationRef.current = { x: 0.35, y: -0.6 };
-    targetZoomRef.current = 1600;
+    if (activeModule) {
+      centerTargetRef.current = activeModule.center.clone();
+      targetZoomRef.current = activeModule.bounds.dist;
+    } else {
+      centerTargetRef.current = new THREE.Vector3(0, assemblyResult.totalBounds.height, 0);
+      targetZoomRef.current = assemblyResult.totalBounds.dist;
+    }
+    setAutoRotate(false);
   };
+
+  if (effectivePieces.length === 0) {
+    return null;
+  }
 
   return (
     <div id="furniture-3d-viewer-section" className="bg-white rounded-xl border border-stone-200 shadow-2xs overflow-hidden">
       {/* Header Bar */}
-      <div className="bg-stone-50/80 px-4 py-3 border-b border-stone-200 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">
-            <Box className="w-4 h-4" />
+      <div className="bg-stone-900 text-stone-100 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-6 h-6 rounded-md bg-amber-500 text-stone-950 flex items-center justify-center font-bold text-xs shadow-xs">
+            <Box className="w-3.5 h-3.5" />
           </div>
           <div>
-            <h3 className="text-xs font-bold text-stone-900 uppercase tracking-wide flex items-center gap-1.5">
-              <span>Vista 3D del Mueble Armado</span>
-              <span className="text-[10px] font-medium bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded font-sans normal-case">
-                Interactivo
-              </span>
-            </h3>
-            <p className="text-[11px] text-stone-500">
-              {preset ? preset.name : 'Modelo 3D con despiece interactivo'}
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-white">
+                {preset ? preset.name : 'Simulador 3D de Ensamble y Despiece'}
+              </h3>
+              {assemblyResult.modules.length > 0 && (
+                <span className="text-[10px] px-2 py-0.5 bg-stone-800 text-amber-400 rounded-full font-mono font-medium">
+                  {assemblyResult.modules.length} {assemblyResult.modules.length === 1 ? 'Mueble' : 'Muebles ensamblados'}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-stone-400">
+              Vista 3D interactiva en tiempo real construida a partir de tus medidas
             </p>
           </div>
         </div>
 
-        {/* Toolbar Controls */}
-        <div className="flex items-center gap-1.5">
-          {/* Wood Finishes */}
-          <div className="flex items-center gap-1 bg-stone-100 p-0.5 rounded-lg border border-stone-200 text-xs">
+        {/* Action Controls */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* Wood Theme Selector */}
+          <div className="flex items-center bg-stone-800 rounded-lg p-0.5 border border-stone-700">
             <button
               onClick={() => setWoodTheme('oak')}
-              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
-                woodTheme === 'oak' ? 'bg-amber-600 text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
+              className={`px-2 py-1 text-[11px] rounded font-medium transition-all ${
+                woodTheme === 'oak' ? 'bg-amber-600 text-white shadow-2xs' : 'text-stone-300 hover:text-white'
               }`}
               title="Roble Natural"
             >
@@ -397,8 +434,8 @@ export const Furniture3DViewer: React.FC<Furniture3DViewerProps> = ({
             </button>
             <button
               onClick={() => setWoodTheme('walnut')}
-              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
-                woodTheme === 'walnut' ? 'bg-stone-800 text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
+              className={`px-2 py-1 text-[11px] rounded font-medium transition-all ${
+                woodTheme === 'walnut' ? 'bg-amber-800 text-white shadow-2xs' : 'text-stone-300 hover:text-white'
               }`}
               title="Nogal Oscuro"
             >
@@ -406,119 +443,225 @@ export const Furniture3DViewer: React.FC<Furniture3DViewerProps> = ({
             </button>
             <button
               onClick={() => setWoodTheme('white')}
-              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
-                woodTheme === 'white' ? 'bg-stone-300 text-stone-900 shadow-2xs font-bold' : 'text-stone-600 hover:text-stone-900'
+              className={`px-2 py-1 text-[11px] rounded font-medium transition-all ${
+                woodTheme === 'white' ? 'bg-stone-200 text-stone-900 shadow-2xs' : 'text-stone-300 hover:text-white'
               }`}
-              title="Melamina Blanca"
+              title="Blanco Nórdico"
             >
               Blanco
+            </button>
+            <button
+              onClick={() => setWoodTheme('pine')}
+              className={`px-2 py-1 text-[11px] rounded font-medium transition-all ${
+                woodTheme === 'pine' ? 'bg-amber-500 text-stone-950 shadow-2xs' : 'text-stone-300 hover:text-white'
+              }`}
+              title="Pino Claro"
+            >
+              Pino
             </button>
           </div>
 
           {/* Explode View Toggle */}
           <button
-            onClick={() => setIsExploded(!isExploded)}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
+            onClick={() => {
+              setIsExploded(!isExploded);
+              setExplosionAmount(isExploded ? 0 : 1);
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1 text-xs rounded-lg font-medium transition-all shadow-xs ${
               isExploded
-                ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
-                : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
+                ? 'bg-amber-500 text-stone-950 font-bold'
+                : 'bg-stone-800 text-stone-200 hover:bg-stone-700 hover:text-white border border-stone-700'
             }`}
-            title="Separar piezas para ver el ensamblaje"
+            title="Separar piezas para ver el ensamble interior"
           >
             <Layers className="w-3.5 h-3.5" />
             <span>{isExploded ? 'Ensamblado' : 'Despiece (Explosión)'}</span>
           </button>
 
-          {/* Auto rotate */}
+          {/* Auto Rotate */}
           <button
             onClick={() => setAutoRotate(!autoRotate)}
-            className={`p-1.5 rounded-lg border transition-all ${
-              autoRotate
-                ? 'bg-amber-100 text-amber-800 border-amber-300'
-                : 'bg-white text-stone-600 border-stone-300 hover:bg-stone-100'
+            className={`p-1.5 rounded-lg text-xs transition-colors ${
+              autoRotate ? 'bg-amber-500 text-stone-950' : 'bg-stone-800 text-stone-300 hover:bg-stone-700 hover:text-white'
             }`}
-            title={autoRotate ? 'Detener rotación automática' : 'Rotar automáticamente'}
+            title={autoRotate ? 'Detener rotación' : 'Rotar 360° continuamente'}
           >
             <RotateCcw className={`w-3.5 h-3.5 ${autoRotate ? 'animate-spin' : ''}`} />
           </button>
 
-          {/* Reset Camera */}
+          {/* Zoom Out */}
           <button
-            onClick={resetCamera}
-            className="p-1.5 rounded-lg bg-white border border-stone-300 text-stone-600 hover:bg-stone-100 transition-all"
-            title="Restablecer vista"
-          >
-            <Eye className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* 3D Canvas Viewport */}
-      <div className="relative">
-        <div
-          ref={mountRef}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          onWheel={handleWheel}
-          className="w-full h-[380px] sm:h-[430px] cursor-grab active:cursor-grabbing bg-radial from-stone-50 to-stone-100 select-none"
-        />
-
-        {/* Overlay Instructions & Legend */}
-        <div className="absolute top-3 left-3 pointer-events-none flex flex-col gap-1">
-          <div className="bg-white/90 backdrop-blur-xs px-2.5 py-1 rounded-md border border-stone-200 text-[11px] text-stone-600 shadow-2xs flex items-center gap-1.5">
-            <Info className="w-3 h-3 text-amber-600" />
-            <span>Arrastra con el mouse para rotar • Rueda para zoom</span>
-          </div>
-        </div>
-
-        {/* Floating Zoom & Controls */}
-        <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-white/90 backdrop-blur-xs p-1 rounded-lg border border-stone-200 shadow-xs">
-          <button
-            onClick={() => {
-              targetZoomRef.current = Math.max(600, targetZoomRef.current - 250);
-            }}
-            className="p-1.5 rounded hover:bg-stone-100 text-stone-700 transition-colors"
-            title="Acercar"
-          >
-            <ZoomIn className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => {
-              targetZoomRef.current = Math.min(3000, targetZoomRef.current + 250);
-            }}
-            className="p-1.5 rounded hover:bg-stone-100 text-stone-700 transition-colors"
-            title="Alejar"
+            onClick={() => handleZoom(300)}
+            className="p-1.5 rounded-lg bg-stone-800 text-stone-300 hover:bg-stone-700 hover:text-white text-xs transition-colors"
+            title="Alejar cámara"
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </button>
+
+          {/* Zoom In */}
+          <button
+            onClick={() => handleZoom(-300)}
+            className="p-1.5 rounded-lg bg-stone-800 text-stone-300 hover:bg-stone-700 hover:text-white text-xs transition-colors"
+            title="Acercar cámara"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Reset Camera */}
+          <button
+            onClick={handleResetCamera}
+            className="p-1.5 rounded-lg bg-stone-800 text-stone-300 hover:bg-stone-700 hover:text-white text-xs transition-colors"
+            title="Centrar vista"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
-      {/* Piece Quick Inspection List */}
-      <div className="px-4 py-2.5 bg-stone-50 border-t border-stone-200">
-        <div className="flex items-center justify-between text-xs text-stone-500 mb-1.5">
-          <span className="font-semibold text-stone-700">Partes del Modelo 3D:</span>
-          <span>{pieceDefinitions.length} elementos estructurados</span>
+      {/* Multi-Furniture Selection Tabs Bar */}
+      {assemblyResult.modules.length > 1 && (
+        <div className="bg-stone-800/95 px-4 py-2 flex items-center gap-1.5 overflow-x-auto border-t border-stone-700">
+          <span className="text-[11px] text-stone-400 mr-1 font-medium">Ver en 3D:</span>
+          <button
+            onClick={() => setActiveModuleFilter('all')}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
+              activeModuleFilter === 'all'
+                ? 'bg-amber-500 text-stone-950 shadow-xs'
+                : 'bg-stone-700 text-stone-300 hover:text-white'
+            }`}
+          >
+            🏢 Todos los Muebles ({assemblyResult.modules.length})
+          </button>
+          {assemblyResult.modules.map((m) => (
+            <button
+              key={m.name}
+              onClick={() => setActiveModuleFilter(m.name)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                activeModuleFilter === m.name
+                  ? 'bg-amber-500 text-stone-950 shadow-xs'
+                  : 'bg-stone-700 text-stone-300 hover:text-white'
+              }`}
+            >
+              <span>{m.name}</span>
+              <span className="text-[10px] opacity-75 font-mono">({m.piecesCount} pzs)</span>
+            </button>
+          ))}
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {pieceDefinitions.map((def) => {
-            const isSelected = selectedPieceName === def.name;
-            return (
-              <button
-                key={def.name}
-                onClick={() => setSelectedPieceName(isSelected ? null : def.name)}
-                className={`px-2 py-1 rounded-md text-[11px] font-mono transition-all border ${
-                  isSelected
-                    ? 'bg-amber-600 text-white border-amber-700 shadow-2xs'
-                    : 'bg-white text-stone-700 border-stone-200 hover:border-amber-400 hover:bg-amber-50/50'
-                }`}
-              >
-                {def.name} ({def.w}×{def.h} mm)
-              </button>
-            );
-          })}
+      )}
+
+      {/* 3D Canvas Stage */}
+      <div className="relative w-full h-[460px] bg-linear-to-b from-stone-50 to-stone-100 cursor-grab active:cursor-grabbing select-none overflow-hidden">
+        <div ref={mountRef} className="w-full h-full" />
+
+        {/* Floating Controls Overlay: Explosion Slider when exploded is active */}
+        {isExploded && (
+          <div className="absolute top-3 left-3 bg-stone-900/85 backdrop-blur-xs text-white px-3 py-2 rounded-xl shadow-lg border border-stone-700/60 flex items-center gap-2.5 z-10">
+            <span className="text-xs font-medium text-stone-300">Explosión:</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={explosionAmount}
+              onChange={(e) => setExplosionAmount(parseFloat(e.target.value))}
+              className="w-28 accent-amber-500 cursor-pointer"
+            />
+            <span className="text-xs font-mono font-bold text-amber-400 w-8 text-right">
+              {Math.round(explosionAmount * 100)}%
+            </span>
+          </div>
+        )}
+
+        {/* Floating Inspector Panel for Selected Piece */}
+        {selectedPieceMeta && (
+          <div className="absolute bottom-3 left-3 bg-stone-900/90 backdrop-blur-xs text-white p-3 rounded-xl shadow-xl border border-stone-700 max-w-xs z-10 animate-fade-in">
+            <div className="flex items-center justify-between border-b border-stone-800 pb-1.5 mb-2">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-400" />
+                <span className="text-xs font-bold text-white">{selectedPieceMeta.name}</span>
+              </div>
+              <span className="text-[10px] px-1.5 py-0.5 bg-stone-800 text-stone-300 rounded font-mono">
+                {selectedPieceMeta.furnitureGroup}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="bg-stone-800/80 p-1.5 rounded">
+                <div className="text-[10px] text-stone-400">Largo</div>
+                <div className="font-mono font-bold text-amber-300">
+                  {unit === 'cm'
+                    ? (selectedPieceMeta.w / 10).toFixed(1)
+                    : unit === 'in'
+                    ? (selectedPieceMeta.w / 25.4).toFixed(1)
+                    : Math.round(selectedPieceMeta.w)}{' '}
+                  {unit}
+                </div>
+              </div>
+              <div className="bg-stone-800/80 p-1.5 rounded">
+                <div className="text-[10px] text-stone-400">Ancho</div>
+                <div className="font-mono font-bold text-amber-300">
+                  {unit === 'cm'
+                    ? (selectedPieceMeta.d / 10).toFixed(1)
+                    : unit === 'in'
+                    ? (selectedPieceMeta.d / 25.4).toFixed(1)
+                    : Math.round(selectedPieceMeta.d)}{' '}
+                  {unit}
+                </div>
+              </div>
+              <div className="bg-stone-800/80 p-1.5 rounded">
+                <div className="text-[10px] text-stone-400">Espesor</div>
+                <div className="font-mono font-bold text-stone-200">
+                  {unit === 'cm'
+                    ? (selectedPieceMeta.h / 10).toFixed(1)
+                    : unit === 'in'
+                    ? (selectedPieceMeta.h / 25.4).toFixed(2)
+                    : Math.round(selectedPieceMeta.h)}{' '}
+                  {unit}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Instructions Hint */}
+        <div className="absolute bottom-3 right-3 bg-white/90 backdrop-blur-xs text-stone-600 px-3 py-1.5 rounded-lg border border-stone-200/80 text-[11px] shadow-xs flex items-center gap-1.5 pointer-events-none">
+          <Eye className="w-3.5 h-3.5 text-stone-400" />
+          <span>Arrastra para rotar • Rueda para zoom • Clic en pieza para inspeccionar</span>
+        </div>
+      </div>
+
+      {/* Assembly Specs Footnote */}
+      <div className="bg-stone-50 border-t border-stone-200 px-4 py-2.5 flex flex-wrap items-center justify-between text-xs text-stone-700 gap-3">
+        <div className="flex items-center gap-3">
+          {activeModule ? (
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-stone-900">
+                {activeModule.name}:
+              </span>
+              <span className="font-mono text-stone-600">
+                {unit === 'cm' ? (activeModule.width / 10).toFixed(0) : activeModule.width} ×{' '}
+                {unit === 'cm' ? (activeModule.height / 10).toFixed(0) : activeModule.height} ×{' '}
+                {unit === 'cm' ? (activeModule.depth / 10).toFixed(0) : activeModule.depth} {unit}
+              </span>
+              <span className="text-stone-400">•</span>
+              <span className="text-stone-600 text-[11px]">
+                Hueco libre entre laterales: <strong className="font-mono text-amber-800">{unit === 'cm' ? (activeModule.interiorWidth / 10).toFixed(1) : activeModule.interiorWidth} {unit}</strong>
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-stone-900">
+                Proyecto Global ({assemblyResult.modules.length} muebles):
+              </span>
+              <span className="text-stone-600">
+                {assemblyResult.allDefs.length} piezas ensambladas paramétricamente
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5 text-stone-500 text-[11px]">
+          <Info className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+          <span>Auto-ensamblaje con descuento automático de espesores</span>
         </div>
       </div>
     </div>

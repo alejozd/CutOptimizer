@@ -17,6 +17,7 @@ export interface PieceInput {
   allowRotation: boolean;
   color: string;
   edgeBanding: EdgeBanding;
+  furnitureGroup?: string; // Nombre del mueble o grupo (ej. "Estante", "Mesita de Noche")
 }
 
 export interface SheetConfig {
@@ -36,6 +37,7 @@ export interface PlacedPiece {
   id: string;
   pieceId: string;
   pieceName: string;
+  furnitureGroup?: string;
   x: number;
   y: number;
   width: number;
