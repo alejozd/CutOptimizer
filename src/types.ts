@@ -5,7 +5,6 @@ export interface EdgeBanding {
   bottom: boolean;  // L2 (Largo 2)
   left: boolean;    // A1 (Ancho 1)
   right: boolean;   // A2 (Ancho 2)
-  thickness?: number; // Espesor del tapacanto en mm (ej. 0.4mm, 1mm, 2mm)
 }
 
 export interface PieceInput {
@@ -26,6 +25,8 @@ export interface SheetConfig {
   width: number;  // Ancho de la lámina
   kerf: number;   // Espesor de la sierra / disco de corte (ej. 3mm o 4mm)
   trimMargin: number; // Refilado / recorte perimetral de bordes (ej. 10mm)
+  /** Edge banding thickness in the sheet unit; discounted from the cut size on each banded side */
+  edgeBandingThickness?: number;
   grainDirection: 'horizontal' | 'vertical' | 'none';
   pricePerSheet?: number;
   unit: Unit;

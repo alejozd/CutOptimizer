@@ -64,6 +64,57 @@ function blockingCuts(layout: SheetLayout): string[] {
   return layout.cutLines.map((c) => findBlockingEndpoint(c, layout)).filter((m): m is string => m !== null);
 }
 
+describe('optimizeCuts — edge banding thickness', () => {
+  const banded = (edges: Partial<PieceInput['edgeBanding']>, length = 600, width = 400): PieceInput => ({
+    ...piece('p', length, width),
+    edgeBanding: { ...noBanding, ...edges },
+  });
+
+  it('cuts each banded side short by the banding thickness so the finished piece keeps its size', () => {
+    const result = optimizeCuts(
+      [banded({ top: true, bottom: true, left: true, right: true })],
+      sheet({ edgeBandingThickness: 2 })
+    );
+    const placed = result.sheets[0].placedPieces[0];
+
+    expect(placed.width).toBe(596);
+    expect(placed.height).toBe(396);
+  });
+
+  it('only shortens the dimension across a banded edge', () => {
+    // L1 (top) runs along the length, so it eats into the width only
+    const result = optimizeCuts([banded({ top: true })], sheet({ edgeBandingThickness: 2 }));
+    const placed = result.sheets[0].placedPieces[0];
+
+    expect(placed.width).toBe(600);
+    expect(placed.height).toBe(398);
+  });
+
+  it('keeps finished sizes for edge banding length and piece reference', () => {
+    const result = optimizeCuts([banded({ top: true, left: true })], sheet({ edgeBandingThickness: 2 }));
+    const placed = result.sheets[0].placedPieces[0];
+
+    expect(placed.originalLength).toBe(600);
+    expect(placed.originalWidth).toBe(400);
+    expect(result.totalEdgeBandingLength).toBe(1000);
+  });
+
+  it('places a piece that only fits once the banding is discounted', () => {
+    // Finished 2444 mm long with 2 mm banding on both ends: cut length is exactly 2440
+    const result = optimizeCuts([banded({ left: true, right: true }, 2444, 1000)], sheet({ edgeBandingThickness: 2 }));
+
+    expect(result.unplacedPieces).toEqual([]);
+    expect(result.sheets[0].placedPieces[0].width).toBe(2440);
+  });
+
+  it('leaves sizes unchanged when no thickness is configured', () => {
+    const result = optimizeCuts([banded({ top: true, bottom: true, left: true, right: true })], sheet());
+    const placed = result.sheets[0].placedPieces[0];
+
+    expect([placed.width, placed.height]).toEqual([600, 400]);
+  });
+});
+
 describe('optimizeCuts — unplaced pieces', () => {
   it('reports a piece larger than the sheet as too large', () => {
     const result = optimizeCuts([piece('giant', 3000, 500, 1, true)], sheet());

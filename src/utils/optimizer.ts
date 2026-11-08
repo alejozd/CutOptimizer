@@ -23,8 +23,11 @@ interface InternalPiece {
   instanceIndex: number;
   pieceId: string;
   name: string;
+  /** Cut size: finished size minus edge banding thickness on banded sides */
   length: number;
   width: number;
+  finishedLength: number;
+  finishedWidth: number;
   allowRotation: boolean;
   color: string;
   edgeBanding: PieceInput['edgeBanding'];
@@ -62,31 +65,50 @@ function allowedOrientations(
   return sheetConfig.grainDirection === 'vertical' ? [rotated] : [unrotated];
 }
 
+/**
+ * Piece sizes are finished sizes. Each banded edge adds the banding thickness, so the
+ * board is cut that much shorter across it. L1/L2 (top/bottom) run along the length and
+ * shorten the width; A1/A2 (left/right) run along the width and shorten the length.
+ */
+function cutSize(piece: PieceInput, sheetConfig: SheetConfig): { length: number; width: number } {
+  const t = Math.max(0, sheetConfig.edgeBandingThickness ?? 0);
+  const eb = piece.edgeBanding;
+  const across = (a?: boolean, b?: boolean) => t * ((a ? 1 : 0) + (b ? 1 : 0));
+  return {
+    length: piece.length - across(eb?.left, eb?.right),
+    width: piece.width - across(eb?.top, eb?.bottom),
+  };
+}
+
 /** Whether the piece fits an empty sheet in at least one allowed orientation */
 function fitsEmptySheet(piece: PieceInput, sheetConfig: SheetConfig): boolean {
   const margin = Math.max(0, sheetConfig.trimMargin);
   const usableW = sheetConfig.length - 2 * margin;
   const usableH = sheetConfig.width - 2 * margin;
-  return allowedOrientations(piece, sheetConfig).some((o) => o.w <= usableW && o.h <= usableH);
+  const size = { ...cutSize(piece, sheetConfig), allowRotation: piece.allowRotation };
+  return allowedOrientations(size, sheetConfig).some((o) => o.w <= usableW && o.h <= usableH);
 }
 
 /**
  * Expands piece inputs into individual piece instances
  */
-function expandPieces(pieces: PieceInput[]): InternalPiece[] {
+function expandPieces(pieces: PieceInput[], sheetConfig: SheetConfig): InternalPiece[] {
   const result: InternalPiece[] = [];
   let counter = 0;
   for (let i = 0; i < pieces.length; i++) {
     const p = pieces[i];
     const qty = Math.max(0, Math.floor(p.quantity));
+    const cut = cutSize(p, sheetConfig);
     for (let q = 0; q < qty; q++) {
       result.push({
         originalIndex: i,
         instanceIndex: counter++,
         pieceId: p.id,
         name: p.name,
-        length: p.length,
-        width: p.width,
+        length: cut.length,
+        width: cut.width,
+        finishedLength: p.length,
+        finishedWidth: p.width,
         allowRotation: p.allowRotation,
         color: p.color,
         edgeBanding: p.edgeBanding,
@@ -200,8 +222,8 @@ class SheetPacker {
       y: targetRect.y,
       width: placeW,
       height: placeH,
-      originalLength: piece.length,
-      originalWidth: piece.width,
+      originalLength: piece.finishedLength,
+      originalWidth: piece.finishedWidth,
       rotated: bestRotated,
       color: piece.color,
       edgeBanding: piece.edgeBanding,
@@ -469,7 +491,7 @@ export function optimizeCuts(
   algorithm: AlgorithmType = 'auto_best'
 ): OptimizationResult {
   const startTime = performance.now();
-  const allPieces = expandPieces(pieces);
+  const allPieces = expandPieces(pieces, sheetConfig);
 
   if (allPieces.length === 0) {
     return {

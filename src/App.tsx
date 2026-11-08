@@ -79,6 +79,8 @@ export default function App() {
       width: roundVal(prev.width),
       kerf: newUnit === 'in' ? Number((prev.kerf * factor).toFixed(3)) : Number((prev.kerf * factor).toFixed(1)),
       trimMargin: roundVal(prev.trimMargin),
+      // Banding is often under 1 mm, so keep more decimals than other dimensions
+      edgeBandingThickness: Number(((prev.edgeBandingThickness ?? 0) * factor).toFixed(newUnit === 'mm' ? 2 : 3)),
       unit: newUnit,
     }));
 
