@@ -20,5 +20,5 @@ export function buildCsv(rows: CsvCell[][]): string {
  * untouched, which would truncate the file at the first "#". The BOM lets Excel detect UTF-8.
  */
 export function csvDataUri(csv: string): string {
-  return 'data:text/csv;charset=utf-8,' + encodeURIComponent('﻿' + csv);
+  return 'data:text/csv;charset=utf-8,' + encodeURIComponent('\uFEFF' + csv);
 }

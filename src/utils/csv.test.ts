@@ -31,6 +31,9 @@ describe('csvDataUri', () => {
 
     expect(uri.startsWith('data:text/csv;charset=utf-8,')).toBe(true);
     expect(uri).not.toContain('#');
-    expect(decodeURIComponent(uri.slice('data:text/csv;charset=utf-8,'.length))).toBe('﻿"Puerta #1",2');
+    const body = decodeURIComponent(uri.slice('data:text/csv;charset=utf-8,'.length));
+    // Byte order mark first, checked by code point so it cannot pass as literal text
+    expect(body.charCodeAt(0)).toBe(0xfeff);
+    expect(body.slice(1)).toBe('"Puerta #1",2');
   });
 });
