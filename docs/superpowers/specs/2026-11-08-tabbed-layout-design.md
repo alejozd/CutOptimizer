@@ -95,3 +95,15 @@ Everything currently in the right column, same order, full width: `OptimizerCont
 - Remembering the active tab across reloads.
 - Redesigning the 3D viewer.
 - Changes to colors or visual style.
+
+## Implementado después del merge (2026-11-14)
+
+Registro de en qué se apartó la implementación de este diseño, para que el documento no contradiga al
+código:
+
+- La suite pasó de 59 a 63 pruebas: las 4 nuevas de `summarizeResult`.
+- En móvil el formulario rápido se parte en **cuatro** filas, no en dos.
+- La cabecera **no** queda fija en móvil: se desplaza y solo la barra de pasos sigue visible, porque el
+  bloque fijo completo ocupaba el 34% de la pantalla. Desde `md` se fijan cabecera y pestañas.
+- Las pestañas y el resumen comparten **una sola fila** por debajo de `sm`, sin los números de paso.
+- Se añadió una prueba automática de maquetación con Chrome headless por CDP, fuera del repositorio.
