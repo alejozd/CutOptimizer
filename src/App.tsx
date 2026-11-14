@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, Suspense } from 'react';
 import { 
   AlgorithmType, 
   PieceInput, 
@@ -16,9 +16,21 @@ import { SheetCanvasView } from './components/SheetCanvasView';
 import { PiecesReportTable } from './components/PiecesReportTable';
 import { CutSequenceModal } from './components/CutSequenceModal';
 import { PrintReportView } from './components/PrintReportView';
-import { Furniture3DViewer } from './components/Furniture3DViewer';
 import { StepTab, StepTabs } from './components/StepTabs';
 import { summarizeResult } from './utils/resultSummary';
+
+// three.js only backs the 3D furniture viewer, which lives behind the Resultado step, so it is
+// fetched on demand instead of riding along in the initial bundle.
+const Furniture3DViewer = React.lazy(() =>
+  import('./components/Furniture3DViewer').then((module) => ({ default: module.Furniture3DViewer })),
+);
+
+const Viewer3DFallback: React.FC = () => (
+  <div className="bg-white rounded-xl border border-stone-200 shadow-xs min-h-[420px] flex items-center justify-center gap-2.5 text-sm text-stone-500">
+    <span className="w-4 h-4 rounded-full border-2 border-amber-600 border-t-transparent animate-spin" />
+    <span>Cargando visor 3D…</span>
+  </div>
+);
 
 export default function App() {
   // Unit state
@@ -264,7 +276,11 @@ export default function App() {
               <PiecesReportTable result={optimizationResult} unit={unit} onSelectSheet={setActiveSheetIndex} />
             )}
 
-            {pieces.length > 0 && <Furniture3DViewer preset={activePreset} pieces={pieces} unit={unit} />}
+            {pieces.length > 0 && (
+              <Suspense fallback={<Viewer3DFallback />}>
+                <Furniture3DViewer preset={activePreset} pieces={pieces} unit={unit} />
+              </Suspense>
+            )}
           </>
         )}
       </main>
