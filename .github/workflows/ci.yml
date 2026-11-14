@@ -28,6 +28,26 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # package-lock.json was generated on Windows, and npm only recorded the Windows binaries of
+      # rollup, esbuild and @tailwindcss/oxide. Without this, `npm ci` on Linux leaves rollup unable
+      # to load its native binding and every command that touches Vite dies. The versions are read
+      # from the installed packages, so they cannot drift from the lockfile.
+      - name: Install Linux binaries the Windows lockfile omits
+        run: |
+          set -euo pipefail
+          add() {
+            parent="$1"; dep="$2"
+            ver=$(node -p "require('$parent/package.json').optionalDependencies['$dep'] || ''")
+            if [ -z "$ver" ]; then
+              echo "::error::$parent does not declare $dep as an optional dependency"; exit 1
+            fi
+            echo "installing $dep@$ver"
+            npm install --no-save --no-package-lock --no-audit --no-fund "$dep@$ver"
+          }
+          add rollup '@rollup/rollup-linux-x64-gnu'
+          add esbuild '@esbuild/linux-x64'
+          add '@tailwindcss/oxide' '@tailwindcss/oxide-linux-x64-gnu'
+
       - name: Typecheck
         run: npx tsc --noEmit
 
