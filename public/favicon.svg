@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Optimizador de Cortes de Madera">
+  <!-- Sheet -->
+  <rect width="64" height="64" rx="14" fill="#1c1917" />
+  <rect x="11" y="11" width="42" height="42" rx="4" fill="#e7e5e4" />
+  <!-- Placed piece -->
+  <rect x="32" y="32" width="21" height="21" rx="1.5" fill="#d97706" />
+  <!-- Guillotine cuts -->
+  <path d="M32 11v42M11 32h42" stroke="#b45309" stroke-width="2.5" stroke-linecap="square" />
+</svg>
