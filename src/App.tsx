@@ -223,7 +223,11 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'pieces' && (
+        {/* The piece editor stays mounted while another step is open: its draft form, the furniture
+            filter and the paste modal all live in component state, so unmounting would silently
+            discard whatever the user was typing. The result panel keeps mounting on demand, because
+            its canvas and WebGL viewer must not be laid out at zero size. */}
+        <div className={activeTab === 'pieces' ? '' : 'hidden'}>
           <PieceListEditor
             pieces={pieces}
             onChange={(updatedPieces) => {
@@ -235,7 +239,7 @@ export default function App() {
             unit={unit}
             sheetArea={totalSheetArea}
           />
-        )}
+        </div>
 
         {activeTab === 'result' && (
           <>
