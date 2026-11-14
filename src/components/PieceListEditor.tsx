@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { EdgeBanding, PieceInput, Unit } from '../types';
 import { PIECE_COLORS } from '../utils/presets';
 import { CsvCell, buildCsv, csvDataUri } from '../utils/csv';
@@ -40,6 +40,8 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
   const [draftWidth, setDraftWidth] = useState<string>('');
   const [draftQuantity, setDraftQuantity] = useState<number>(1);
   const [draftRotation, setDraftRotation] = useState<boolean>(true);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const [showShelfRule, setShowShelfRule] = useState<boolean>(false);
   const [draftColor, setDraftColor] = useState<string>(PIECE_COLORS[0].hex);
   const [draftEdgeBanding, setDraftEdgeBanding] = useState<EdgeBanding>({
     top: false,
@@ -143,6 +145,8 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
     setDraftLength('');
     setDraftWidth('');
     setDraftQuantity(1);
+    // Ready for the next piece without the mouse; group and rotation are kept
+    nameInputRef.current?.focus();
     const currentColorIdx = PIECE_COLORS.findIndex((c) => c.hex === draftColor);
     const nextColor = PIECE_COLORS[(currentColorIdx + 1) % PIECE_COLORS.length].hex;
     setDraftColor(nextColor);
@@ -393,9 +397,9 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
 
       {/* Quick Add Bar Form */}
       <form onSubmit={handleAddPiece} className="p-3.5 bg-stone-50/70 border-b border-stone-200">
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+        <div className="flex flex-wrap gap-2.5 items-end">
           {/* Furniture / Group Name */}
-          <div className="sm:col-span-3">
+          <div className="w-full sm:w-48">
             <label htmlFor="draft-piece-group" className="block text-[11px] font-medium text-stone-600 mb-1 flex items-center gap-1">
               <FolderPlus className="w-3 h-3 text-amber-600" />
               <span>Mueble / Proyecto</span>
@@ -417,12 +421,13 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
           </div>
 
           {/* Piece Name */}
-          <div className="sm:col-span-3">
+          <div className="flex-1 min-w-[10rem]">
             <label htmlFor="draft-piece-name" className="block text-[11px] font-medium text-stone-600 mb-1">
               Nombre de la Pieza
             </label>
             <input
               id="draft-piece-name"
+              ref={nameInputRef}
               type="text"
               value={draftName}
               onChange={(e) => setDraftName(e.target.value)}
@@ -432,7 +437,7 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
           </div>
 
           {/* Length */}
-          <div className="sm:col-span-2">
+          <div className="w-24">
             <label htmlFor="draft-piece-length" className="block text-[11px] font-medium text-stone-600 mb-1 flex justify-between">
               <span>Largo</span>
               <span className="text-stone-400 font-mono">[{unit}]</span>
@@ -451,7 +456,7 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
           </div>
 
           {/* Width */}
-          <div className="sm:col-span-2">
+          <div className="w-24">
             <label htmlFor="draft-piece-width" className="block text-[11px] font-medium text-stone-600 mb-1 flex justify-between">
               <span>Ancho</span>
               <span className="text-stone-400 font-mono">[{unit}]</span>
@@ -470,7 +475,7 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
           </div>
 
           {/* Quantity */}
-          <div className="sm:col-span-1">
+          <div className="w-16">
             <label htmlFor="draft-piece-qty" className="block text-[11px] font-medium text-stone-600 mb-1 text-center">
               Cant.
             </label>
@@ -486,15 +491,36 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
             />
           </div>
 
+          {/* Rotation */}
+          <div>
+            <label className="block text-[11px] font-medium text-stone-600 mb-1 text-center">Giro</label>
+            <button
+              id="draft-piece-rotation"
+              type="button"
+              onClick={() => setDraftRotation((r) => !r)}
+              aria-pressed={draftRotation}
+              title={
+                draftRotation
+                  ? 'Giro permitido (90°): la veta no importa en esta pieza'
+                  : 'Orientación bloqueada: el largo de la pieza sigue la veta del tablero'
+              }
+              className={`h-[30px] w-9 rounded-lg border flex items-center justify-center transition-all ${
+                draftRotation ? 'bg-amber-100 border-amber-300 text-amber-800' : 'bg-stone-100 border-stone-300 text-stone-400'
+              }`}
+            >
+              <RotateCw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           {/* Add Button */}
-          <div className="sm:col-span-1">
+          <div>
             <label className="block text-[11px] font-medium text-transparent mb-1 select-none">
               Añadir
             </label>
             <button
               id="add-piece-submit-button"
               type="submit"
-              className="w-full bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white text-xs font-semibold py-1.5 px-2 rounded-lg flex items-center justify-center gap-1 transition-colors shadow-xs"
+              className="bg-amber-600 px-4 hover:bg-amber-700 active:bg-amber-800 text-white text-xs font-semibold py-1.5 rounded-lg flex items-center justify-center gap-1 transition-colors shadow-xs"
               title="Añadir pieza a la lista"
             >
               <Plus className="w-4 h-4" />
@@ -504,18 +530,30 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
         </div>
       </form>
 
-      {/* Carpentry Rule Banner / Shelf Dimension Assistant */}
+      {/* Carpentry Rule / Shelf Dimension Assistant: one line, details on demand */}
       {carpentryAdvice && carpentryAdvice.shelfInteriorWidth !== null && (
-        <div className="bg-amber-50/70 border-b border-amber-200/80 px-4 py-2 flex items-center justify-between gap-2 text-xs text-amber-900">
-          <div className="flex items-center gap-2">
-            <Info className="w-4 h-4 text-amber-700 shrink-0" />
+        <div className="bg-amber-50/50 border-b border-amber-200/80 px-4 py-1.5 text-xs text-amber-900">
+          <button
+            id="shelf-rule-toggle"
+            type="button"
+            onClick={() => setShowShelfRule((v) => !v)}
+            aria-expanded={showShelfRule}
+            className="flex items-center gap-1.5 font-medium hover:text-amber-700"
+          >
+            <Info className="w-3.5 h-3.5 text-amber-700 shrink-0" />
             <span>
-              <strong>📐 Regla de Entrepaños ({carpentryAdvice.groupName}):</strong> Para un ancho exterior de{' '}
-              <strong>{carpentryAdvice.outerWidth} {unit}</strong> y melamina de <strong>{carpentryAdvice.thickness} {unit}</strong>,
-              los entrepaños interiores deben medir <strong>{carpentryAdvice.shelfInteriorWidth.toFixed(1)} {unit}</strong> de largo
-              ({carpentryAdvice.outerWidth} − {carpentryAdvice.discount} {unit}) para encajar perfectamente entre los 2 laterales.
+              Regla de entrepaños ({carpentryAdvice.groupName}): {carpentryAdvice.shelfInteriorWidth.toFixed(1)} {unit}
             </span>
-          </div>
+            <span className="text-amber-700/70 font-normal">{showShelfRule ? 'ocultar' : 'ver detalle'}</span>
+          </button>
+          {showShelfRule && (
+            <p className="mt-1 pl-5 text-amber-800">
+              Para un ancho exterior de <strong>{carpentryAdvice.outerWidth} {unit}</strong> y melamina de{' '}
+              <strong>{carpentryAdvice.thickness} {unit}</strong>, los entrepaños interiores deben medir{' '}
+              <strong>{carpentryAdvice.shelfInteriorWidth.toFixed(1)} {unit}</strong> de largo (
+              {carpentryAdvice.outerWidth} − {carpentryAdvice.discount} {unit}) para encajar entre los 2 laterales.
+            </p>
+          )}
         </div>
       )}
 
@@ -553,7 +591,7 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
       )}
 
       {/* Pieces Table */}
-      <div className="flex-1 overflow-x-auto max-h-[380px] overflow-y-auto">
+      <div className="flex-1 overflow-x-auto max-h-[60vh] overflow-y-auto">
         {pieces.length === 0 ? (
           <div className="py-10 px-4 text-center">
             <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center mx-auto mb-2.5">
