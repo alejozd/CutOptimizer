@@ -194,8 +194,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-stone-100 text-stone-900 flex flex-col font-sans antialiased selection:bg-amber-500 selection:text-white">
-      {/* Sticky header + step tabs */}
-      <div className="sticky top-0 z-30">
+      {/* On mobile the wrapper collapses (display: contents) so the header scrolls away and only
+          the step tabs stay pinned; from md up it pins header + tabs together as before. */}
+      <div className="contents md:block md:sticky md:top-0 md:z-30">
         <Header
           unit={unit}
           onUnitChange={handleUnitChange}
