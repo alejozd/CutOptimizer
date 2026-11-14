@@ -397,9 +397,9 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
 
       {/* Quick Add Bar Form */}
       <form onSubmit={handleAddPiece} className="p-3.5 bg-stone-50/70 border-b border-stone-200">
-        <div className="flex flex-wrap gap-2.5 items-end">
+        <div className="flex flex-wrap gap-2 sm:gap-2.5 items-end">
           {/* Furniture / Group Name */}
-          <div className="w-full sm:w-48">
+          <div className="flex-1 min-w-[7rem] sm:flex-none sm:w-48">
             <label htmlFor="draft-piece-group" className="block text-[11px] font-medium text-stone-600 mb-1 flex items-center gap-1">
               <FolderPlus className="w-3 h-3 text-amber-600" />
               <span>Mueble / Proyecto</span>
@@ -421,7 +421,7 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
           </div>
 
           {/* Piece Name */}
-          <div className="flex-1 min-w-[10rem]">
+          <div className="flex-1 min-w-[9rem]">
             <label htmlFor="draft-piece-name" className="block text-[11px] font-medium text-stone-600 mb-1">
               Nombre de la Pieza
             </label>
@@ -437,7 +437,7 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
           </div>
 
           {/* Length */}
-          <div className="w-24">
+          <div className="w-[4.5rem] sm:w-24">
             <label htmlFor="draft-piece-length" className="block text-[11px] font-medium text-stone-600 mb-1 flex justify-between">
               <span>Largo</span>
               <span className="text-stone-400 font-mono">[{unit}]</span>
@@ -456,7 +456,7 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
           </div>
 
           {/* Width */}
-          <div className="w-24">
+          <div className="w-[4.5rem] sm:w-24">
             <label htmlFor="draft-piece-width" className="block text-[11px] font-medium text-stone-600 mb-1 flex justify-between">
               <span>Ancho</span>
               <span className="text-stone-400 font-mono">[{unit}]</span>
@@ -475,7 +475,7 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
           </div>
 
           {/* Quantity */}
-          <div className="w-16">
+          <div className="w-14 sm:w-16">
             <label htmlFor="draft-piece-qty" className="block text-[11px] font-medium text-stone-600 mb-1 text-center">
               Cant.
             </label>
@@ -499,6 +499,7 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
               type="button"
               onClick={() => setDraftRotation((r) => !r)}
               aria-pressed={draftRotation}
+              aria-label="Permitir giro de 90°"
               title={
                 draftRotation
                   ? 'Giro permitido (90°): la veta no importa en esta pieza'
@@ -513,14 +514,14 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
           </div>
 
           {/* Add Button */}
-          <div>
+          <div className="w-full sm:w-auto">
             <label className="block text-[11px] font-medium text-transparent mb-1 select-none">
               Añadir
             </label>
             <button
               id="add-piece-submit-button"
               type="submit"
-              className="bg-amber-600 px-4 hover:bg-amber-700 active:bg-amber-800 text-white text-xs font-semibold py-1.5 rounded-lg flex items-center justify-center gap-1 transition-colors shadow-xs"
+              className="w-full sm:w-auto bg-amber-600 px-4 hover:bg-amber-700 active:bg-amber-800 text-white text-xs font-semibold py-1.5 rounded-lg flex items-center justify-center gap-1 transition-colors shadow-xs"
               title="Añadir pieza a la lista"
             >
               <Plus className="w-4 h-4" />
@@ -538,13 +539,15 @@ export const PieceListEditor: React.FC<PieceListEditorProps> = ({
             type="button"
             onClick={() => setShowShelfRule((v) => !v)}
             aria-expanded={showShelfRule}
-            className="flex items-center gap-1.5 font-medium hover:text-amber-700"
+            className="flex w-full items-center gap-1.5 font-medium hover:text-amber-700 text-left"
           >
             <Info className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-            <span>
+            <span className="min-w-0 truncate">
               Regla de entrepaños ({carpentryAdvice.groupName}): {carpentryAdvice.shelfInteriorWidth.toFixed(1)} {unit}
             </span>
-            <span className="text-amber-700/70 font-normal">{showShelfRule ? 'ocultar' : 'ver detalle'}</span>
+            <span className="ml-auto sm:ml-0 shrink-0 whitespace-nowrap text-amber-700/70 font-normal">
+              {showShelfRule ? 'ocultar' : 'ver detalle'}
+            </span>
           </button>
           {showShelfRule && (
             <p className="mt-1 pl-5 text-amber-800">

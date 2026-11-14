@@ -102,8 +102,14 @@ Registro de en qué se apartó la implementación de este diseño, para que el d
 código:
 
 - La suite pasó de 59 a 63 pruebas: las 4 nuevas de `summarizeResult`.
-- En móvil el formulario rápido se parte en **cuatro** filas, no en dos.
+- En móvil el formulario rápido se parte en **tres** filas, no dos: los siete controles no caben en dos
+  a 390 px sin recortar medidas de cuatro cifras, así que el grupo y el nombre comparten la primera
+  fila, largo/ancho/cantidad/giro la segunda, y "Añadir" ocupa el ancho completo en la tercera.
 - La cabecera **no** queda fija en móvil: se desplaza y solo la barra de pasos sigue visible, porque el
-  bloque fijo completo ocupaba el 34% de la pantalla. Desde `md` se fijan cabecera y pestañas.
+  bloque fijo completo ocupaba el 34% de la pantalla. Desde `md` se fijan cabecera y pestañas. En
+  teléfonos se muestra una versión corta del subtítulo en lugar del texto completo.
 - Las pestañas y el resumen comparten **una sola fila** por debajo de `sm`, sin los números de paso.
-- Se añadió una prueba automática de maquetación con Chrome headless por CDP, fuera del repositorio.
+- La regla de entrepaños permanece en una línea incluso a 360 px: el texto se recorta y "ver detalle"
+  queda anclado a la derecha.
+- La verificación de maquetación ya no vive fuera del repositorio: `scripts/smoke.mjs` la ejecuta el CI
+  en cada push, sin dependencias nuevas, contra el build de producción.

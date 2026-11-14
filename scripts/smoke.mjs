@@ -238,6 +238,7 @@ try {
       addPadding: addBtn ? getComputedStyle(addBtn).paddingLeft : null,
       addRight: addBtn ? Math.round(addBtn.getBoundingClientRect().right) : null,
       tableOverflow: scroller ? scroller.scrollWidth - scroller.clientWidth : null,
+      rotationLabel: document.getElementById('draft-piece-rotation')?.getAttribute('aria-label') ?? null,
       chunkLoaded: performance.getEntriesByType('resource').filter((e) => /Furniture3DViewer/i.test(e.name)).length,
       canvases: document.querySelectorAll('canvas').length,
     };
@@ -249,6 +250,7 @@ try {
   check('the add button keeps its own padding (px-4 regression)', initial.addPadding === '16px', String(initial.addPadding));
   check('the add button is inside the viewport', initial.addRight !== null && initial.addRight <= 1280, String(initial.addRight));
   check('the pieces table does not scroll horizontally', initial.tableOverflow === 0, `overflow ${initial.tableOverflow}px`);
+  check('the rotation toggle has an accessible name', !!initial.rotationLabel, String(initial.rotationLabel));
   check('the 3D viewer is not fetched on the first step', initial.chunkLoaded === 0, `${initial.chunkLoaded} requests`);
   check('no canvas is mounted on the first step', initial.canvases === 0, `${initial.canvases} canvases`);
 
@@ -286,10 +288,8 @@ try {
   check('the 3D viewer mounted', result.viewerMounted === true, String(result.viewerMounted));
   notes.push(`3D canvas count after opening Resultado: ${result.canvases}`);
 
-  // mobile
-  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
-  await cdp.goto(APP_URL);
-  const mobile = await cdp.evaluate(`(() => {
+  // mobile: 390, plus the narrower 360 many Android phones use
+  const MOBILE_PROBE = `(() => {
     const nav = document.querySelector('nav[aria-label="Pasos"]');
     const tablist = document.querySelector('[role="tablist"]');
     const summary = document.getElementById('step-tabs-summary');
@@ -297,14 +297,48 @@ try {
       const r = el.getBoundingClientRect();
       return Math.round((r.top + r.bottom) / 2);
     };
+    const ids = ['draft-piece-group', 'draft-piece-name', 'draft-piece-length', 'draft-piece-width',
+                 'draft-piece-qty', 'draft-piece-rotation', 'add-piece-submit-button'];
+    const distinctTops = [...new Set(ids.map((id) => {
+      const el = document.getElementById(id);
+      return el ? Math.round(el.getBoundingClientRect().top) : null;
+    }).filter((t) => t !== null))];
+    const formWidths = ids.map((id) => {
+      const el = document.getElementById(id);
+      const w = el ? Math.round(el.getBoundingClientRect().width) : -1;
+      return id.replace('draft-piece-', '') + '=' + w;
+    }).join(' ');
+    const rule = document.getElementById('shelf-rule-toggle');
+    let ruleActionVisible = null;
+    if (rule) {
+      const action = rule.lastElementChild;
+      if (action) {
+        const a = action.getBoundingClientRect();
+        const b = rule.getBoundingClientRect();
+        ruleActionVisible = a.width > 0 && a.right <= b.right + 1;
+      }
+    }
     return {
       navHeight: nav ? Math.round(nav.getBoundingClientRect().height) : null,
       oneRow: tablist && summary ? Math.abs(centre(tablist) - centre(summary)) < 8 : null,
-      stickyShare: nav ? Math.round((nav.getBoundingClientRect().height / window.innerHeight) * 100) : null,
+      formRowTops: distinctTops.length,
+      formWidths,
+      ruleHeight: rule ? Math.round(rule.getBoundingClientRect().height) : null,
+      ruleOneLine: rule ? rule.getBoundingClientRect().height < 34 : null,
+      ruleActionVisible,
     };
-  })()`);
-  check('the mobile bar stays compact (<= 60px)', mobile.navHeight !== null && mobile.navHeight <= 60, `${mobile.navHeight}px`);
-  check('tabs and summary share one row on mobile', mobile.oneRow === true, String(mobile.oneRow));
+  })()`;
+
+  for (const width of [390, 360]) {
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: false });
+    await cdp.goto(APP_URL);
+    const m = await cdp.evaluate(MOBILE_PROBE);
+    check(`the step bar is compact at ${width}px (<= 60px)`, m.navHeight !== null && m.navHeight <= 60, `${m.navHeight}px`);
+    check(`tabs and summary share one row at ${width}px`, m.oneRow === true, String(m.oneRow));
+    check(`the quick-add form uses at most 3 rows at ${width}px`, m.formRowTops <= 3, `${m.formRowTops} rows :: ${m.formWidths}`);
+    check(`the shelf-rule line stays on one line at ${width}px`, m.ruleOneLine === true, `${m.ruleHeight}px tall`);
+    check(`the shelf-rule action stays visible at ${width}px`, m.ruleActionVisible === true, String(m.ruleActionVisible));
+  }
 
   check('the console stays clean', cdp.errors.length === 0, cdp.errors.slice(0, 3).join(' | '));
 

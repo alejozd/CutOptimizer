@@ -37,7 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-amber-600 flex items-center justify-center text-white shadow-inner font-bold">
             <Scissors className="w-4 h-4 sm:w-5 sm:h-5 text-amber-100" />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="text-base sm:text-lg font-semibold tracking-tight text-stone-100">
                 Optimizador de Cortes de Madera
@@ -46,6 +46,10 @@ export const Header: React.FC<HeaderProps> = ({
                 2D Guillotina
               </span>
             </div>
+            {/* Phones get a shorter tagline instead of losing the description entirely */}
+            <p className="sm:hidden text-[11px] text-stone-400 truncate">
+              Aprovechamiento de láminas y tableros
+            </p>
             <p className="hidden sm:block text-xs text-stone-400">
               Cálculo automático de aprovechamiento de láminas y tableros
             </p>
