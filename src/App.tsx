@@ -17,6 +17,8 @@ import { PiecesReportTable } from './components/PiecesReportTable';
 import { CutSequenceModal } from './components/CutSequenceModal';
 import { PrintReportView } from './components/PrintReportView';
 import { Furniture3DViewer } from './components/Furniture3DViewer';
+import { StepTab, StepTabs } from './components/StepTabs';
+import { summarizeResult } from './utils/resultSummary';
 
 export default function App() {
   // Unit state
@@ -53,6 +55,8 @@ export default function App() {
 
   // Active sheet tab
   const [activeSheetIndex, setActiveSheetIndex] = useState<number>(0);
+  // Active step tab: the app opens on the pieces list, where most of the work happens
+  const [activeTab, setActiveTab] = useState<StepTab>('pieces');
 
   // Modals
   const [showCutSequence, setShowCutSequence] = useState<boolean>(false);
@@ -147,6 +151,7 @@ export default function App() {
     setPieces(convertedPieces);
     setActivePreset(preset);
     setActiveSheetIndex(0);
+    setActiveTab('pieces');
   };
 
   // Reset to default blank state
@@ -189,47 +194,51 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-stone-100 text-stone-900 flex flex-col font-sans antialiased selection:bg-amber-500 selection:text-white">
-      {/* Top Header Navigation */}
-      <Header
-        unit={unit}
-        onUnitChange={handleUnitChange}
-        onLoadPreset={handleLoadPreset}
-        onReset={handleReset}
-        onPrint={() => setShowPrintReport(true)}
-        sheetsCount={optimizationResult.totalSheetsNeeded}
-        efficiency={optimizationResult.overallEfficiency}
-      />
+      {/* On mobile the wrapper collapses (display: contents) so the header scrolls away and only
+          the step tabs stay pinned; from md up it pins header + tabs together as before. */}
+      <div className="contents md:block md:sticky md:top-0 md:z-30">
+        <Header
+          unit={unit}
+          onUnitChange={handleUnitChange}
+          onLoadPreset={handleLoadPreset}
+          onReset={handleReset}
+          onPrint={() => setShowPrintReport(true)}
+          sheetsCount={optimizationResult.totalSheetsNeeded}
+          efficiency={optimizationResult.overallEfficiency}
+        />
+        <StepTabs
+          activeTab={activeTab}
+          onChange={setActiveTab}
+          summary={summarizeResult(optimizationResult)}
+        />
+      </div>
 
-      {/* Main Workspace Layout */}
-      <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 py-5 flex-1 space-y-5">
-        {/* Two Column Responsive Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          {/* Left Column: Setup Inputs (Lámina Inicial + Piezas) */}
-          <div className="lg:col-span-5 space-y-4">
-            {/* Step 1: Lámina Inicial */}
-            <SheetConfigPanel
-              config={sheetConfig}
-              onChange={(updated) => setSheetConfig((prev) => ({ ...prev, ...updated }))}
-              unit={unit}
-            />
+      {/* Active step, full width */}
+      <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 py-5 flex-1 space-y-4">
+        {activeTab === 'material' && (
+          <SheetConfigPanel
+            config={sheetConfig}
+            onChange={(updated) => setSheetConfig((prev) => ({ ...prev, ...updated }))}
+            unit={unit}
+          />
+        )}
 
-            {/* Step 2: Piezas a cortar */}
-            <PieceListEditor
-              pieces={pieces}
-              onChange={(updatedPieces) => {
-                setPieces(updatedPieces);
-                if (updatedPieces.length === 0) {
-                  setActivePreset(null);
-                }
-              }}
-              unit={unit}
-              sheetArea={totalSheetArea}
-            />
-          </div>
+        {activeTab === 'pieces' && (
+          <PieceListEditor
+            pieces={pieces}
+            onChange={(updatedPieces) => {
+              setPieces(updatedPieces);
+              if (updatedPieces.length === 0) {
+                setActivePreset(null);
+              }
+            }}
+            unit={unit}
+            sheetArea={totalSheetArea}
+          />
+        )}
 
-          {/* Right Column: Optimizer & Visualization */}
-          <div className="lg:col-span-7 space-y-4">
-            {/* Algorithm selector and calculate action */}
+        {activeTab === 'result' && (
+          <>
             <OptimizerControls
               algorithm={algorithm}
               onAlgorithmChange={setAlgorithm}
@@ -237,13 +246,8 @@ export default function App() {
               isCalculating={isCalculating}
             />
 
-            {/* Results KPI Metric Cards */}
-            <ResultDashboard
-              result={optimizationResult}
-              unit={unit}
-            />
+            <ResultDashboard result={optimizationResult} unit={unit} />
 
-            {/* 2D Interactive Cutting Diagram (SVG Canvas) */}
             <SheetCanvasView
               sheets={optimizationResult.sheets}
               activeSheetIndex={activeSheetIndex}
@@ -252,25 +256,13 @@ export default function App() {
               onViewCuttingSequence={() => setShowCutSequence(true)}
             />
 
-            {/* Detailed Pieces Report Table */}
             {optimizationResult.totalPiecesPlaced > 0 && (
-              <PiecesReportTable
-                result={optimizationResult}
-                unit={unit}
-                onSelectSheet={setActiveSheetIndex}
-              />
+              <PiecesReportTable result={optimizationResult} unit={unit} onSelectSheet={setActiveSheetIndex} />
             )}
 
-            {/* 3D Furniture Assembly & Exploded Model Viewer */}
-            {pieces.length > 0 && (
-              <Furniture3DViewer
-                preset={activePreset}
-                pieces={pieces}
-                unit={unit}
-              />
-            )}
-          </div>
-        </div>
+            {pieces.length > 0 && <Furniture3DViewer preset={activePreset} pieces={pieces} unit={unit} />}
+          </>
+        )}
       </main>
 
       {/* Step-by-Step Workshop Cutting Sequence Modal */}

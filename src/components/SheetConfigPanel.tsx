@@ -45,7 +45,9 @@ export const SheetConfigPanel: React.FC<SheetConfigPanelProps> = ({
         </span>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div className="p-4 grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+        {/* Column 1: formats and dimensions */}
+        <div className="space-y-4">
         {/* Quick Presets Bar */}
         <div>
           <label className="block text-xs font-medium text-stone-600 mb-1.5 flex items-center gap-1">
@@ -162,8 +164,10 @@ export const SheetConfigPanel: React.FC<SheetConfigPanelProps> = ({
           </div>
         </div>
 
-        {/* Technical parameters: Kerf & Trim margin & Grain */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-stone-100">
+        </div>
+
+        {/* Column 2: Kerf, trim margin, edge banding and grain */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-stone-100 lg:pt-0 lg:border-t-0">
           {/* Espesor de corte (Kerf / Sierra) */}
           <div>
             <label
@@ -281,7 +285,7 @@ export const SheetConfigPanel: React.FC<SheetConfigPanelProps> = ({
         </div>
 
         {/* Cost per sheet & Usable area summary */}
-        <div className="bg-stone-50 rounded-lg p-2.5 border border-stone-200 flex flex-col sm:flex-row items-center justify-between text-xs text-stone-600 gap-2">
+        <div className="bg-stone-50 rounded-lg p-2.5 border border-stone-200 flex flex-col sm:flex-row lg:flex-col items-center lg:items-start justify-between text-xs text-stone-600 gap-2">
           <div className="flex items-center gap-2">
             <DollarSign className="w-3.5 h-3.5 text-amber-700" />
             <span className="font-medium text-stone-700">Precio por lámina:</span>
